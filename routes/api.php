@@ -34,7 +34,6 @@ Route::post('/verify/login', [AuthenticationController::class, 'verifyLoginOTP']
 Route::post('/store-fcmtoken', [NotificationController::class, 'storeFcmToken']);
 Route::get('/remember', [StudentsController::class, 'RememberMe']);
 Route::post('/student/notification', [NotificationController::class, 'SendNotificationToStudent']);
-
 Route::prefix('Uploading')->group(function () {
     Route::post('/uplaod/Result', [DatacellModuleController::class, 'UploadExamAwardList']);
     Route::post('/uplaod/Topic', [DatacellModuleController::class, 'UploadCourseContentTopic']);
@@ -252,9 +251,9 @@ Route::prefix('Admin')->group(function () {
     Route::get('/TeacherJLecList', [AdminController::class, 'getAllTeachersWithJuniorLecturers']);
     Route::get('/history', [AdminController::class, 'getGraderHistory']);
 
-    Route::post('/grader_req/add', [SingleInsertionController::class, 'StoreGraderRequest']);
-    Route::post('/grader_req/process', [SingleInsertionController::class, 'processRequest']);
-    Route::get('/grader_req/list', [SingleInsertionController::class, 'pendingRequests']);
+    Route::post('/grader_req/add', [SingleInsertionController::class, 'StoreGraderRequest']);   
+    Route::post('/grader_req/process', [SingleInsertionController::class, 'processRequest']);   //Processing
+    Route::get('/grader_req/list', [SingleInsertionController::class, 'pendingRequests']);      //View-Request
 
     Route::get('/excluded-days', [SingleInsertionController::class, 'viewExcludedDays']);        // View all
     Route::post('/excluded-days', [SingleInsertionController::class, 'storeExcludedDay']);       // Insert
@@ -453,35 +452,6 @@ Route::prefix('Hod')->group(function () {
     Route::post('/update/{hod_id}', [HodController::class, 'updateHODInfo']);
 
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Testing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 Route::get('/', function () {
     return response()->json(['status' => 'success'], 200);

@@ -954,10 +954,8 @@ class AdminController extends Controller
                 $preReqId = null;
             }
 
-            // Check if the course already exists
             $course = Course::where('name', $name)->where('code', $code)->first();
 
-            // Data to update or create
             $dataToSave = [
                 'code' => $code,
                 'name' => $name,
@@ -970,34 +968,29 @@ class AdminController extends Controller
             ];
 
             if ($course) {
-                // Update the course if it exists
                 $course->update($dataToSave);
                 return response()->json([
                     'status' => 'success',
                     'message' => "The course with Name: {$name} and Code: {$code} was updated successfully."
                 ], 200);
             } else {
-                // Create a new course if it doesn't exist
                 Course::create($dataToSave);
                 return response()->json([
                     'status' => 'success',
                     'message' => "The course with Name: {$name} and Code: {$code} was added successfully."
                 ], 201);
             }
-
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Validation failed',
                 'errors' => $e->getMessage()
             ], 422);
-
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Data not found'
             ], 404);
-
         } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',

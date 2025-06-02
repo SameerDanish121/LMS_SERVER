@@ -1991,7 +1991,7 @@ class SingleInsertionController extends Controller
                 'status' => true,
                 'message' => 'Grader request submitted successfully.',
                 'data' => $requestData
-            ], 201);
+            ], 200);
 
         } catch (Exception $e) {
             return response()->json([
