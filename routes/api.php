@@ -459,8 +459,6 @@ Route::prefix('parents')->group(function () {
     Route::put('/update-email/{parentId}', [ParentsController::class, 'UpdateEmail']);
     Route::put('/update-password/{parentId}', [ParentsController::class, 'UpdatePassword']);
     Route::get('/view', [ParentsController::class, 'getGroupedParents']);
-
-
 });
 
 

@@ -185,8 +185,8 @@ class StudentManagement extends Model
                     'offered_course_id' => $offeredCourse->id,
                     'section_id' => $enrolledCourse->section_id,
                     'teacher_offered_course_id' => $teacher_offered_course_id,
-                    'isLab'=>$teacher_offered_course->offeredCourse->course->lab==1,
-                   
+                    'isLab' => $teacher_offered_course->offeredCourse->course->lab == 1,
+
                 ];
             }
         }
@@ -214,7 +214,7 @@ class StudentManagement extends Model
                     'offered_course_id' => $offeredCourse->id,
                     'section_id' => $section,
                     'session_start_date' => $session->start_date,
-                    'session_id'=>$session->id,
+                    'session_id' => $session->id,
                     'teacher_offered_course_id' => ($teacher_offered_course) ? $teacher_offered_course->id : null
                 ];
             }
@@ -227,6 +227,81 @@ class StudentManagement extends Model
             ->values();
         return $courses;
     }
+    public static function getDueSoonUnsubmittedTasks($student_id)
+    {
+        try {
+            $enrolledCourses = self::getActiveEnrollmentCoursesName($student_id);
+            $tasksDueSoon = [];
+
+            $now = now();
+            $next24Hours = now()->addHours(24);
+
+            foreach ($enrolledCourses as $enrollment) {
+                $sectionId = $enrollment['section_id'];
+                $offeredCourseId = $enrollment['offered_course_id'];
+
+                $teacherOfferedCourse = teacher_offered_courses::where('section_id', $sectionId)
+                    ->where('offered_course_id', $offeredCourseId)
+                    ->first();
+
+                if (!$teacherOfferedCourse) {
+                    continue;
+                }
+
+                $teacherOfferedCourseId = $teacherOfferedCourse->id;
+
+                $tasks = task::with(['courseContent'])
+                    ->where('teacher_offered_course_id', $teacherOfferedCourseId)
+                    ->whereBetween('due_date', [$now, $next24Hours])
+                    ->get();
+
+                foreach ($tasks as $task) {
+                    $contentType = $task->courseContent->content ?? null;
+
+                    // Skip if already attempted
+                    if ($contentType === 'MCQS') {
+                        $isAttempted = student_task_result::where('Task_id', $task->id)
+                            ->where('Student_id', $student_id)
+                            ->exists();
+                    } else {
+                        $isAttempted = student_task_submission::where('task_id', $task->id)
+                            ->where('student_id', $student_id)
+                            ->exists();
+                    }
+
+                    if ($isAttempted) {
+                        continue;
+                    }
+
+                    $taskDetails = [
+                        'task_id' => $task->id,
+                        'course_name' => $enrollment['course_name'],
+                        'title' => $task->title,
+                        'type' => $contentType === 'MCQS' ? 'MCQS' : $task->type,
+                        'points' => $task->points,
+                        'start_date' => $task->start_date,
+                        'due_date' => $task->due_date,
+                        'IsAttempted' => 'No',
+                    ];
+
+                    // Add content link or MCQS
+                    if ($contentType === 'MCQS') {
+                        $taskDetails['MCQS'] = Action::getMCQS($task->courseContent->id);
+                    } else if ($task->courseContent->content) {
+                        $taskDetails['File'] = asset($task->courseContent->content);
+                    }
+
+                    $tasksDueSoon[] = $taskDetails;
+                }
+            }
+
+            return $tasksDueSoon;
+        } catch (\Exception $e) {
+            return []; // Safe return
+        }
+    }
+
+
     public static function getAllTask($student_id)
     {
         $enrolledCourses = self::getActiveEnrollmentCoursesName($student_id);
@@ -724,14 +799,14 @@ class StudentManagement extends Model
                 ];
                 if ($course->lab == 1) {
                     $juniorLecturer = teacher_juniorlecturer::where('teacher_offered_course_id', $teacherOfferedCourse->id)->first();
-                    $jlImage=null;
-                    $juniorLecturerName=null;
+                    $jlImage = null;
+                    $juniorLecturerName = null;
                     if ($juniorLecturer) {
                         $juniorLecturerName = juniorlecturer::where('id', $juniorLecturer->juniorlecturer_id)->value('name');
                         $jlImage = juniorlecturer::where('id', $juniorLecturer->juniorlecturer_id)->value('image');
                     }
                     $courseDetails['junior_lecturer_name'] = ($juniorLecturerName) ? $juniorLecturerName : 'N/A';
-                    $courseDetails['junior_image'] = $jlImage? asset($jlImage) : null;
+                    $courseDetails['junior_image'] = $jlImage ? asset($jlImage) : null;
                 }
 
                 $courses[] = $courseDetails;
@@ -800,7 +875,7 @@ class StudentManagement extends Model
                 if ($course->lab == 1) {
                     if ($teacherOfferedCourse) {
                         $juniorLecturer = teacher_juniorlecturer::where('teacher_offered_course_id', $teacherOfferedCourse->id)->first();
-                        $jlImage=null;
+                        $jlImage = null;
                         if ($juniorLecturer) {
                             $juniorLecturerName = juniorlecturer::where('id', $juniorLecturer->juniorlecturer_id)->value('name');
                             $jlImage = juniorlecturer::where('id', $juniorLecturer->juniorlecturer_id)->value('image');

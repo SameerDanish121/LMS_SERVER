@@ -500,7 +500,7 @@ class StudentsController extends Controller
                     "Attendance" => (new attendance())->getAttendanceByID($student_id),
                     "Image" => $student->image ? asset($student->image) : null,
                     "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
-                    "Task_Info" => self::getOngoingTask($student_id),
+                    "Task_Info" => StudentManagement::getDueSoonUnsubmittedTasks($student_id),
                 ];
                 if ($rescheduled) {
                     $studentInfo['Notice'] = $Notice;
@@ -829,7 +829,7 @@ class StudentsController extends Controller
                     "Attendance" => (new attendance())->getAttendanceByID($student_id),
                     "Image" => $student->image ? asset($student->image) : null,
                     "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
-                    "Task_Info" => self::getOngoingTask($student_id),
+                    "Task_Info" => StudentManagement::getDueSoonUnsubmittedTasks($student_id),
                 ];
                 if ($rescheduled) {
                     $studentInfo['Notice'] = $Notice;
