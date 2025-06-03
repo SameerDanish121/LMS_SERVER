@@ -22,8 +22,9 @@ public function allUser()
             'Student' => \App\Models\student::class,
             'Teacher' => \App\Models\teacher::class,
             'JuniorLecturer' => \App\Models\juniorlecturer::class,
+            'Parent'=> \App\Models\parents::class
         ];
-        $result = [];
+        $result = [];  
         $totalUsers = 0;
         foreach ($roleMap as $role => $modelClass) {
             $relatedUsers = $modelClass::with('user')

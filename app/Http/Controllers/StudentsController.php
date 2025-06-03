@@ -7,6 +7,7 @@ use App\Models\Director;
 use App\Models\exam;
 use App\Models\grader;
 use App\Models\Hod;
+use App\Models\parents;
 use App\Models\student_exam_result;
 use App\Models\t_coursecontent_topic_status;
 use App\Models\task_consideration;
@@ -56,45 +57,46 @@ use Intervention\Image\ImageManager;
 class StudentsController extends Controller
 {
 
-    public function getCelendarData(Request $request){
-            $sessions = Session::orderBy('start_date', 'desc')->get();
-    
-            $formattedSessions = $sessions->map(function ($session) {
-                return [
-                    'start_date'=>$session->start_date,
-                    'end_date'=>$session->end_date,
-                    'name'=>(new Session())->getSessionNameByID($session->id)
-                ];
-            });
-            $excluded_days= $sessions = excluded_days ::orderBy('date', 'desc')->get();
-    
-            $formattedExculded = $excluded_days->map(function ($session) {
-                return [
-                    'date'=>$session->date,
-                    'type'=>$session->type,
-                    'Reason'=>$session->reason
-                ];
-            });
-            return response()->json([
-                'session_data' => $formattedSessions,
-                'exculded_days' => $formattedExculded
-            ], 200);
+    public function getCelendarData(Request $request)
+    {
+        $sessions = Session::orderBy('start_date', 'desc')->get();
+
+        $formattedSessions = $sessions->map(function ($session) {
+            return [
+                'start_date' => $session->start_date,
+                'end_date' => $session->end_date,
+                'name' => (new Session())->getSessionNameByID($session->id)
+            ];
+        });
+        $excluded_days = $sessions = excluded_days::orderBy('date', 'desc')->get();
+
+        $formattedExculded = $excluded_days->map(function ($session) {
+            return [
+                'date' => $session->date,
+                'type' => $session->type,
+                'Reason' => $session->reason
+            ];
+        });
+        return response()->json([
+            'session_data' => $formattedSessions,
+            'exculded_days' => $formattedExculded
+        ], 200);
     }
     public function OnlyConsidered($task, $settings)
     {
         $tasksCollection = collect($task);
         $finalResult = [];
-    
+
         foreach ($settings as $type => $creatorLimits) {
             $typeResult = [];
-            if(($creatorLimits['Junior Lecturer']??null)==null){
+            if (($creatorLimits['Junior Lecturer'] ?? null) == null) {
                 $filtered = $tasksCollection
-                ->where('type', $type)
-                ->sortByDesc('obtained_points')
-                ->take($creatorLimits['Total'])
-                ->values(); // Reindex
-               $typeResult['Teacher'] = $filtered;
-            }else{
+                    ->where('type', $type)
+                    ->sortByDesc('obtained_points')
+                    ->take($creatorLimits['Total'])
+                    ->values(); // Reindex
+                $typeResult['Teacher'] = $filtered;
+            } else {
                 foreach ($creatorLimits as $creator => $limit) {
                     $filtered = $tasksCollection
                         ->where('type', $type)
@@ -102,17 +104,17 @@ class StudentsController extends Controller
                         ->sortByDesc('obtained_points')
                         ->take($limit)
                         ->values(); // Reindex
-        
+
                     $typeResult[$creator] = $filtered;
                 }
             }
-            
-    
+
+
             $finalResult[$type] = $typeResult;
         }
-    
+
         return $finalResult;
-    }    
+    }
     public function getAllTaskConsidered(Request $request)
     {
         try {
@@ -162,16 +164,16 @@ class StudentsController extends Controller
                     usort($data, function ($a, $b) {
                         return strtotime($b['due_date']) <=> strtotime($a['due_date']);
                     });
-                    $summary=$enrollment['teacher_offered_course_id'] ? task_consideration::getConsiderationSummary($enrollment['teacher_offered_course_id'], $enrollment['isLab']) : [];
-                    
+                    $summary = $enrollment['teacher_offered_course_id'] ? task_consideration::getConsiderationSummary($enrollment['teacher_offered_course_id'], $enrollment['isLab']) : [];
+
                     $courseBreakDown = [
                         'teacher_offered_course_id' => $enrollment['teacher_offered_course_id'],
                         'course_name' => $enrollment['course_name'],
                         'section' => $enrollment['Section'],
                         'IsLab' => $enrollment['isLab'],
-                        'Consideration_Summary' =>$summary ,
+                        'Consideration_Summary' => $summary,
                         'Tasks' => $data,
-                        'Considered'=>self::OnlyConsidered($data,$summary),
+                        'Considered' => self::OnlyConsidered($data, $summary),
                     ];
                     $AllTask[] = $courseBreakDown;
                 }
@@ -502,8 +504,8 @@ class StudentsController extends Controller
                 ];
                 if ($rescheduled) {
                     $studentInfo['Notice'] = $Notice;
-                }else if(excluded_days::checkHoliday()){
-                    $studentInfo['Notice']=excluded_days::checkHolidayReason();
+                } else if (excluded_days::checkHoliday()) {
+                    $studentInfo['Notice'] = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
                     'Type' => $role,
@@ -570,8 +572,8 @@ class StudentsController extends Controller
                 ];
                 if ($rescheduled) {
                     $Teacher['Notice'] = $Notice;
-                }else if(excluded_days::checkHoliday()){
-                    $Teacher['Notice']=excluded_days::checkHolidayReason();
+                } else if (excluded_days::checkHoliday()) {
+                    $Teacher['Notice'] = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
                     'Type' => $role,
@@ -634,13 +636,13 @@ class StudentsController extends Controller
                     "email" => $teacher->user->email ?? null,
                     "week" => (new session())->getCurrentSessionWeek() ?? 0,
                     "Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?? 'No Session is Active',
-                    $attribute => excluded_days::checkHoliday() ? []: $timetable,
+                    $attribute => excluded_days::checkHoliday() ? [] : $timetable,
                     "image" => $jl->image ? asset($jl->image) : null,
                 ];
                 if ($rescheduled) {
                     $Teacher['Notice'] = $Notice;
-                }else if(excluded_days::checkHoliday()){
-                    $studentInfo['Notice']=excluded_days::checkHolidayReason();
+                } else if (excluded_days::checkHoliday()) {
+                    $studentInfo['Notice'] = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
                     'Type' => $role,
@@ -691,7 +693,7 @@ class StudentsController extends Controller
                     "Username" => $HOD->user->username,
                     "Password" => $HOD->user->password,
                     "user_id" => $HOD->user->id,
-                   "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
+                    "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
                     "Current Session" => (new session())->getSessionNameByID($session->id) ?? 'N/A',
                     "Start Date" => $session->start_date ?? "N/A",
                     "End Date" => $session->end_date ?? "N/A",
@@ -704,6 +706,50 @@ class StudentsController extends Controller
                 return response()->json([
                     'Type' => $role,
                     'DirectorInfo' => $admin
+                ], 200);
+            } else if ($role == 'Parent') {
+                $parent = parents::with(['students.section'])->where('user_id', $user->id)->first();
+
+                if (!$parent) {
+                    return response()->json([
+                        'message' => 'Parent record not found for this user.'
+                    ], 404);
+                }
+                $children = $parent->students->map(function ($student) {
+                    return [
+                        'id' => $student->id,
+                        'name' => $student->name,
+                        'regno' => $student->RegNo,
+                        'image' => $student->image ? asset($student->image) : null,
+                        'section' => $student->section ? $student->section->name : null,
+                    ];
+                });
+                $rescheduled = excluded_days::checkReschedule();
+                $Notice='No Activity';
+                if ($rescheduled) {
+                    $Notice = excluded_days::checkReasonOfReschedule();
+                   
+                }else if (excluded_days::checkHoliday()) {
+                    $Notice = excluded_days::checkHolidayReason();
+                }
+                return response()->json([
+                    'Type' => $role,
+                    'ParentInfo' => [
+                        'parent' => [
+                            'id' => $parent->id,
+                            'name' => $parent->name,
+                            'contact' => $parent->contact,
+                            'address' => $parent->address,
+                            'relation_with_student' => $parent->relation_with_student,
+                            'user_id' => $user->id,
+                            'email' => $user->email,
+                            'username' => $user->username,
+                            "Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?? 'No Session is Active',
+                            "week" => (new session())->getCurrentSessionWeek() ?? 0,
+                            "notice"=>$Notice,
+                        ],
+                        'children' => $children,
+                    ],
                 ], 200);
             } else {
                 return response()->json([
@@ -860,6 +906,50 @@ class StudentsController extends Controller
                 return response()->json([
                     'Type' => $role,
                     'TeacherInfo' => $Teacher,
+                ], 200);
+            }else if ($role == 'Parent') {
+                $parent = parents::with(['students.section'])->where('user_id', $user->id)->first();
+
+                if (!$parent) {
+                    return response()->json([
+                        'message' => 'Parent record not found for this user.'
+                    ], 404);
+                }
+                $children = $parent->students->map(function ($student) {
+                    return [
+                        'id' => $student->id,
+                        'name' => $student->name,
+                        'regno' => $student->RegNo,
+                        'image' => $student->image ? asset($student->image) : null,
+                        'section' => $student->section ? $student->section->name : null,
+                    ];
+                });
+                $rescheduled = excluded_days::checkReschedule();
+                $Notice='No Activity';
+                if ($rescheduled) {
+                    $Notice = excluded_days::checkReasonOfReschedule();
+                   
+                }else if (excluded_days::checkHoliday()) {
+                    $Notice = excluded_days::checkHolidayReason();
+                }
+                return response()->json([
+                    'Type' => $role,
+                    'ParentInfo' => [
+                        'parent' => [
+                            'id' => $parent->id,
+                            'name' => $parent->name,
+                            'contact' => $parent->contact,
+                            'address' => $parent->address,
+                            'relation_with_student' => $parent->relation_with_student,
+                            'user_id' => $user->id,
+                            'email' => $user->email,
+                            'username' => $user->username,
+                            "Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?? 'No Session is Active',
+                            "week" => (new session())->getCurrentSessionWeek() ?? 0,
+                            "notice"=>$Notice,
+                        ],
+                        'children' => $children,
+                    ],
                 ], 200);
             } else {
                 return response()->json([
@@ -1111,14 +1201,14 @@ class StudentsController extends Controller
         try {
             $student_id = $request->student_id;
             $last_fetch_time = $request->last_fetch_time; // <-- add this
-    
+
             $student = student::find($student_id);
             if (!$student) {
                 return response()->json(['status' => 'error', 'message' => 'Student not found.'], 404);
             }
-    
+
             $user_id = $student->user_id;
-    
+
             $sectionList = [$student->section_id];
             $currentSessionId = (new session())->getCurrentSessionId();
             if ($currentSessionId) {
@@ -1131,24 +1221,24 @@ class StudentsController extends Controller
                 $additionalSections = $enrollments->pluck('section_id')->unique()->toArray();
                 $sectionList = array_unique(array_merge($sectionList, $additionalSections));
             }
-    
+
             // Filter all notifications by notification_date > last_fetch_time
-            $filter = function($query) use ($last_fetch_time) {
+            $filter = function ($query) use ($last_fetch_time) {
                 if ($last_fetch_time) {
                     $query->where('notification_date', '>', $last_fetch_time);
                 }
             };
-    
+
             $broadcastAll = notification::where('Brodcast', 1)->whereNull('reciever')->where($filter);
             $broadcastToStudents = notification::where('Brodcast', 1)->where('reciever', 'Student')->where($filter);
             $directToUser = notification::where('TL_receiver_id', $user_id)->where($filter);
             $sectionNotifications = notification::whereIn('Student_Section', $sectionList)->where($filter);
-    
+
             $notifications = $broadcastAll->get()
                 ->merge($broadcastToStudents->get())
                 ->merge($directToUser->get())
                 ->merge($sectionNotifications->get());
-    
+
             $sortedNotifications = $notifications->unique('id')->sortByDesc('notification_date')->values();
             $finalResponse = $sortedNotifications->map(function ($note) {
                 $senderName = 'System';
@@ -1218,12 +1308,12 @@ class StudentsController extends Controller
                 ];
             });
             // (mapping remains same...)
-    
+
             return response()->json([
                 'status' => 'success',
                 'data' => $finalResponse
             ], 200);
-    
+
         } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -1232,7 +1322,7 @@ class StudentsController extends Controller
             ], 500);
         }
     }
-    
+
     public function Notification(Request $request)
     {
         try {

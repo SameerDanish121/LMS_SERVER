@@ -24,7 +24,7 @@ use App\Http\Controllers\AuthenticationController;
 use App\Http\Controllers\DatacellModuleController;
 use App\Http\Controllers\HodController;
 use App\Http\Controllers\SingleInsertionController;
-
+use App\Http\Controllers\ParentsController;
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Authentication~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 Route::get('/Login', [StudentsController::class, 'Login']);
 Route::post('/forgot-password', [AuthenticationController::class, 'sendOTP']);
@@ -192,8 +192,8 @@ Route::prefix('Dropdown')->group(function () {
         })->values();
         return response()->json($sections, 200);
     });
-     Route::get('/get-juniors', function () {
-        $sections =juniorlecturer::all()->map(function ($section) {
+    Route::get('/get-juniors', function () {
+        $sections = juniorlecturer::all()->map(function ($section) {
             return [
                 'id' => $section->id,
                 'name' => $section->name
@@ -251,7 +251,7 @@ Route::prefix('Admin')->group(function () {
     Route::get('/TeacherJLecList', [AdminController::class, 'getAllTeachersWithJuniorLecturers']);
     Route::get('/history', [AdminController::class, 'getGraderHistory']);
 
-    Route::post('/grader_req/add', [SingleInsertionController::class, 'StoreGraderRequest']);   
+    Route::post('/grader_req/add', [SingleInsertionController::class, 'StoreGraderRequest']);
     Route::post('/grader_req/process', [SingleInsertionController::class, 'processRequest']);   //Processing
     Route::get('/grader_req/list', [SingleInsertionController::class, 'pendingRequests']);      //View-Request
 
@@ -443,7 +443,7 @@ Route::prefix('Hod')->group(function () {
     Route::post('/content/update', [HodController::class, 'updateContent']);
     Route::post('/content/copy', [HodController::class, 'CopySemester']);
     Route::get('/exam/all', [HodController::class, 'getExamGroupedBySession']);
-    Route::post('/exam/update', [HodController::class, 'updateExam']); 
+    Route::post('/exam/update', [HodController::class, 'updateExam']);
 
     Route::get('/allocation/history', [HodController::class, 'getCourseAllocationHistory']);
     Route::post('/allocation/add', [HodController::class, 'addTeacherOfferedCourse']);
@@ -452,6 +452,18 @@ Route::prefix('Hod')->group(function () {
     Route::post('/update/{hod_id}', [HodController::class, 'updateHODInfo']);
 
 });
+Route::prefix('parents')->group(function () {
+    Route::post('/add', [ParentsController::class, 'AddParents']);
+    Route::put('/update/{parentId}', [ParentsController::class, 'Update']);
+    Route::delete('/remove/{parentId}', [ParentsController::class, 'Remove']);
+    Route::put('/update-email/{parentId}', [ParentsController::class, 'UpdateEmail']);
+    Route::put('/update-password/{parentId}', [ParentsController::class, 'UpdatePassword']);
+    Route::get('/view', [ParentsController::class, 'getGroupedParents']);
+
+
+});
+
+
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Testing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 Route::get('/', function () {
     return response()->json(['status' => 'success'], 200);

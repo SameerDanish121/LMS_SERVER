@@ -13,9 +13,18 @@ class student extends Model
 
     // Define the fillable properties for mass assignment
     protected $fillable = [
-        'RegNo', 'name', 'cgpa', 'gender', 'date_of_birth', 
-        'guardian', 'image', 'user_id', 'section_id', 'program_id', 
-        'session_id', 'status'
+        'RegNo',
+        'name',
+        'cgpa',
+        'gender',
+        'date_of_birth',
+        'guardian',
+        'image',
+        'user_id',
+        'section_id',
+        'program_id',
+        'session_id',
+        'status'
     ];
 
     /**
@@ -27,6 +36,11 @@ class student extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+   public function parents()
+{
+    return $this->belongsToMany(parents::class, 'parent_student', 'student_id', 'parent_id');
+}
+
 
     // Relationship to Section model
     public function section()
