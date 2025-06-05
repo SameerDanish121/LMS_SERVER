@@ -11,11 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('contested_attendance', function (Blueprint $table) {
+        Schema::create('section', function (Blueprint $table) {
             $table->integer('id', true);
-            $table->integer('Attendance_id')->index('attendance_id');
-            $table->enum('Status', ['Accepted', 'Rejected'])->nullable();
-            $table->boolean('isResolved')->nullable()->default(false);
+            $table->string('group', 50);
+            $table->string('semester', 50);
+            $table->string('program', 50);
         });
     }
 
@@ -24,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('contested_attendance');
+        Schema::dropIfExists('section');
     }
 };

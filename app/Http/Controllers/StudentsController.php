@@ -56,7 +56,6 @@ use Illuminate\Support\Facades\File;
 use Intervention\Image\ImageManager;
 class StudentsController extends Controller
 {
-
     public function getCelendarData(Request $request)
     {
         $sessions = Session::orderBy('start_date', 'desc')->get();
@@ -450,6 +449,81 @@ class StudentsController extends Controller
     {
         return [];
     }
+    public function DirectLogin(Request $request)
+    {
+        try {
+            $request->validate([
+                "student_id" => 'required|string',
+            ]);
+            $student = student::where('id', $request->student_id)->with(['program', 'user'])
+                ->first();
+            if (!$student) {
+                throw new Exception('No user Found');
+            }
+            $student_id = $student->value('id');
+            $section_id = $student->section_id;
+            $attribute = excluded_days::checkHoliday() ? 'Timetable' : 'Timetable';
+            $rescheduled = excluded_days::checkReschedule();
+            if ($rescheduled) {
+                $Notice = excluded_days::checkReasonOfReschedule();
+                $attribute = 'Reschedule';
+                $timetable = timetable::getTodayTimetableOfEnrollementsByStudentId($student_id, excluded_days::checkRescheduleDay() ?? null);
+            } else {
+                $timetable = timetable::getTodayTimetableOfEnrollementsByStudentId($student_id);
+            }
+            $studentInfo = [
+                "id" => $student->id,
+                "name" => $student->name ?? 'N/A',
+                "RegNo" => $student->RegNo,
+                "CGPA" => $student->cgpa,
+                "user_id" => $student->user->id,
+                "Gender" => $student->gender,
+                "Guardian" => $student->guardian,
+                "username" => $student->user->username,
+                "password" => $student->user->password,
+                "email" => $student->user->email,
+                "InTake" => (new session())->getSessionNameByID($student->session_id),
+                "Program" => $student->program->name ?? 'N/A',
+                "Is Grader ?" => grader::where('student_id', $student->id)->exists(),
+                "Section" => (new section())->getNameByID($student->section_id),
+                "Total Enrollments" => student_offered_courses::GetCountOfTotalEnrollments($student->id),
+                "Current Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?: 'N/A',
+                $attribute => excluded_days::checkHoliday() ? [] : $timetable,
+                "Attendance" => (new attendance())->getAttendanceByID($student_id),
+                "Image" => $student->image ? asset($student->image) : null,
+                "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
+                "Task_Info" => StudentManagement::getDueSoonUnsubmittedTasks($student_id),
+            ];
+            if ($rescheduled) {
+                $studentInfo['Notice'] = $Notice;
+            } else if (excluded_days::checkHoliday()) {
+                $studentInfo['Notice'] = excluded_days::checkHolidayReason();
+            }
+            return response()->json([
+                'StudentInfo' => $studentInfo,
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'Failed',
+                'data' => 'You are a Unauthorized User !'
+            ], 404);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
     public function Login(Request $request)
     {
         try {
@@ -721,15 +795,15 @@ class StudentsController extends Controller
                         'name' => $student->name,
                         'regno' => $student->RegNo,
                         'image' => $student->image ? asset($student->image) : null,
-                        'section' => $student->section ? $student->section->name : null,
+                        'section' => $student->section ? (new section())->getNameByID($student->section_id) : null,
                     ];
                 });
                 $rescheduled = excluded_days::checkReschedule();
-                $Notice='No Activity';
+                $Notice = 'No Activity';
                 if ($rescheduled) {
                     $Notice = excluded_days::checkReasonOfReschedule();
-                   
-                }else if (excluded_days::checkHoliday()) {
+
+                } else if (excluded_days::checkHoliday()) {
                     $Notice = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
@@ -746,7 +820,7 @@ class StudentsController extends Controller
                             'username' => $user->username,
                             "Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?? 'No Session is Active',
                             "week" => (new session())->getCurrentSessionWeek() ?? 0,
-                            "notice"=>$Notice,
+                            "notice" => $Notice,
                         ],
                         'children' => $children,
                     ],
@@ -907,7 +981,7 @@ class StudentsController extends Controller
                     'Type' => $role,
                     'TeacherInfo' => $Teacher,
                 ], 200);
-            }else if ($role == 'Parent') {
+            } else if ($role == 'Parent') {
                 $parent = parents::with(['students.section'])->where('user_id', $user->id)->first();
 
                 if (!$parent) {
@@ -921,15 +995,15 @@ class StudentsController extends Controller
                         'name' => $student->name,
                         'regno' => $student->RegNo,
                         'image' => $student->image ? asset($student->image) : null,
-                        'section' => $student->section ? $student->section->name : null,
+                        'section' => $student->section ? (new section())->getNameByID($student->section_id) : null,
                     ];
                 });
                 $rescheduled = excluded_days::checkReschedule();
-                $Notice='No Activity';
+                $Notice = 'No Activity';
                 if ($rescheduled) {
                     $Notice = excluded_days::checkReasonOfReschedule();
-                   
-                }else if (excluded_days::checkHoliday()) {
+
+                } else if (excluded_days::checkHoliday()) {
                     $Notice = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
@@ -946,7 +1020,7 @@ class StudentsController extends Controller
                             'username' => $user->username,
                             "Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?? 'No Session is Active',
                             "week" => (new session())->getCurrentSessionWeek() ?? 0,
-                            "notice"=>$Notice,
+                            "notice" => $Notice,
                         ],
                         'children' => $children,
                     ],

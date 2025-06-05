@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Validator;
 
 class ParentsController extends Controller
 {
-    // 1. Add Parent
+
 
     public function getGroupedParents()
     {
@@ -162,15 +162,15 @@ class ParentsController extends Controller
 
         // Delete parent_student relations first
         parent_student::where('parent_id', $parentId)->delete();
+        
+        // // Delete parent record
+        // $parent->delete();
 
-        // Delete parent record
-        $parent->delete();
-
-        // Delete associated user
-        $user = user::find($parent->user_id);
-        if ($user) {
-            $user->delete();
-        }
+        // // Delete associated user
+        // $user = user::find($parent->user_id);
+        // if ($user) {
+        //     $user->delete();
+        // }
 
         return response()->json(['message' => 'Parent and associated user deleted successfully.'], 200);
     }
@@ -226,4 +226,32 @@ class ParentsController extends Controller
 
         return response()->json(['message' => 'Password updated successfully.'], 200);
     }
+    public function AssignExistingParentToStudent(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'student_id' => 'required|integer|exists:student,id',
+            'parent_id' => 'required|integer|exists:parents,id',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+        $studentId = $request->student_id;
+        $parentId = $request->parent_id;
+        $alreadyAssigned = parent_student::where('student_id', $studentId)
+            ->where('parent_id', $parentId)
+            ->exists();
+        if ($alreadyAssigned) {
+            return response()->json([
+                'message' => 'This parent is already assigned to the selected student.'
+            ], 409);
+        }
+        parent_student::create([
+            'student_id' => $studentId,
+            'parent_id' => $parentId,
+        ]);
+        return response()->json([
+            'message' => 'Existing parent successfully assigned to the student.',
+        ], 201);
+    }
+
 }

@@ -11,11 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('task_consideration', function (Blueprint $table) {
+        Schema::create('attendance', function (Blueprint $table) {
             $table->integer('id', true);
+            $table->enum('status', ['p', 'a']);
+            $table->dateTime('date_time');
+            $table->boolean('isLab');
+            $table->integer('student_id')->index('student_id');
             $table->integer('teacher_offered_course_id')->index('teacher_offered_course_id');
-            $table->enum('type', ['Quiz', 'Assignment', 'LabTask'])->nullable();
-            $table->integer('top')->default(3);
+            $table->integer('venue_id')->nullable()->index('fk_venue_id');
         });
     }
 
@@ -24,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('task_consideration');
+        Schema::dropIfExists('attendance');
     }
 };

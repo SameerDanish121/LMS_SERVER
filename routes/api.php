@@ -2,6 +2,7 @@
 use App\Http\Controllers\AllControlsController;
 use App\Models\Hod;
 use App\Models\Course;
+use App\Models\parents;
 use App\Models\program;
 use App\Models\section;
 use App\Models\session;
@@ -179,6 +180,17 @@ Route::prefix('Dropdown')->group(function () {
                 'name' => $student->name,
                 'regno' => $student->RegNo,
                 'Format' => $student->name . ' (' . $student->RegNo . ')'
+            ];
+        })->values();
+        return response()->json($sections, 200);
+    });
+     Route::get('/AllParentData', function () {
+        $sections = parents ::all()->map(function ($student) {
+            return [
+                'id' => $student->id,
+                'name' => $student->name,
+                'relation' => $student->relation_with_student,
+                'Address(Contact)' => $student->address . ' (' . $student->contact . ')'
             ];
         })->values();
         return response()->json($sections, 200);
@@ -459,6 +471,8 @@ Route::prefix('parents')->group(function () {
     Route::put('/update-email/{parentId}', [ParentsController::class, 'UpdateEmail']);
     Route::put('/update-password/{parentId}', [ParentsController::class, 'UpdatePassword']);
     Route::get('/view', [ParentsController::class, 'getGroupedParents']);
+    Route::post('/add/exsisting', [ParentsController::class, 'AssignExistingParentToStudent']); 
+    Route::get('/getStudent/data', [StudentsController::class, 'DirectLogin']);
 });
 
 

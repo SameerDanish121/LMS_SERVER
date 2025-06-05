@@ -11,13 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('hod', function (Blueprint $table) {
+        Schema::create('contested_attendance', function (Blueprint $table) {
             $table->integer('id', true);
-            $table->string('name', 100);
-            $table->string('designation', 100);
-            $table->string('image')->nullable();
-            $table->string('department', 100);
-            $table->integer('user_id')->nullable()->index('fk_hod_user');
+            $table->integer('Attendance_id')->index('attendance_id');
+            $table->enum('Status', ['Accepted', 'Rejected', 'Pending'])->nullable()->default('Pending');
+            $table->boolean('isResolved')->nullable()->default(false);
         });
     }
 
@@ -26,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('hod');
+        Schema::dropIfExists('contested_attendance');
     }
 };

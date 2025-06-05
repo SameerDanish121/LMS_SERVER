@@ -16,6 +16,7 @@ class Hod extends Model
         'image',
         'department',
         'user_id',
+        'program_id',
     ];
 
     // Define relationship with User model
@@ -23,5 +24,9 @@ class Hod extends Model
     {
         // Foreign key 'user_id' in this table, referencing 'id' in the 'user' table
         return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+    public function program()
+    {
+        return $this->belongsTo(program::class, 'program_id');
     }
 }
