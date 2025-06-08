@@ -865,7 +865,7 @@ class StudentManagement extends Model
                         ? program::where('id', $course->program_id)->value('name')
                         : 'General',
                     'teacher_name' => $teacherName ? $teacherName : 'N/A',
-
+                    'student_offered_course_id' => $enrolledCourse->id,
                     'offered_course_id' => $offeredCourse->id,
                     'teacher_offered_course_id' => ($teacherOfferedCourse) ? $teacherOfferedCourse->id : null,
                     'teacher_image' => ($teacher && $teacher->image) ? asset($teacher->image) : null,
@@ -885,13 +885,20 @@ class StudentManagement extends Model
 
                 }
                 if ($enrolledCourse->grade == 'F' || $enrolledCourse->grade == 'D') {
-                    if ($currentSessionId != 0) {
-                        if (offered_courses::where('course_id', $course->id)->where('session_id', $currentSessionId)->exists()) {
-                            $session = session::find($currentSessionId);
-                            $type = $session->name;
-                            $courseDetails['can_re_enroll'] = 'Yes';
+                    $existingRequest = reenrollment_requests::where('student_offered_course_id', $enrolledCourse->id)->exists();
+
+                    if ($existingRequest) {
+                        $courseDetails['can_re_enroll'] = 'Requested';
+                    } else {
+                        if ($currentSessionId != 0) {
+                            if (offered_courses::where('course_id', $course->id)->where('session_id', $currentSessionId)->exists()) {
+                                $session = session::find($currentSessionId);
+                                $type = $session->name;
+                                $courseDetails['can_re_enroll'] = 'Yes';
+                            }
                         }
                     }
+
                 }
                 $courses[] = $courseDetails;
             }

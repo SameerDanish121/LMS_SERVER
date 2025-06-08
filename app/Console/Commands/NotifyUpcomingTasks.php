@@ -1,11 +1,12 @@
 <?php
-
 namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\task;
 use App\Models\notification;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+
+
 
 class NotifyUpcomingTasks extends Command
 {
@@ -14,7 +15,7 @@ class NotifyUpcomingTasks extends Command
     public function handle()
     {
         $now = Carbon::now();
-         Log::info('notify:tasks command triggered');
+        Log::info('notify:tasks command triggered');
         $this->info('notify:tasks command started');
         // Get tasks due in next 25 hours (we'll filter inside)
         $tasks = task::with(['teacherOfferedCourse.teacher.user', 'teacherOfferedCourse.section'])
@@ -22,10 +23,10 @@ class NotifyUpcomingTasks extends Command
             ->where('due_date', '>=', $now)
             ->where('due_date', '<=', $now->copy()->addHours(25))
             ->get();
-       $this->info('Matching tasks: ' . $tasks->count());
+        $this->info('Matching tasks: ' . $tasks->count());
         foreach ($tasks as $task) {
             $due = Carbon::parse($task->due_date);
-            $diffInMinutes = $now->diffInMinutes($due, false); 
+            $diffInMinutes = $now->diffInMinutes($due, false);
 
             if ($diffInMinutes <= 0) {
                 continue; // Already expired
@@ -52,11 +53,13 @@ class NotifyUpcomingTasks extends Command
             foreach ($notificationsToPush as $item) {
                 $alreadySent = notification::where('title', $item['title'])
                     ->exists();
-                if ($alreadySent) continue;
+                if ($alreadySent)
+                    continue;
                 $sectionId = $task->teacherOfferedCourse->section->id ?? null;
                 $teacher = $task->teacherOfferedCourse->teacher ?? null;
                 $tlSenderId = $teacher?->user?->id;
-                if (!$sectionId || !$tlSenderId) continue;
+                if (!$sectionId || !$tlSenderId)
+                    continue;
                 notification::create([
                     'title' => $item['title'],
                     'description' => $item['description'],

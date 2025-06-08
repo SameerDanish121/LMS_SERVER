@@ -1,14 +1,15 @@
 <?php
 
 namespace App\Http\Controllers;
-
 use App\Models\attendance;
 use App\Models\contested_attendance;
+use App\Models\degree_courses;
 use App\Models\excluded_days;
 use App\Models\grader_requests;
 use App\Models\notification;
 use App\Models\offered_courses;
 use App\Models\program;
+use App\Models\reenrollment_requests;
 use App\Models\role;
 use App\Models\section;
 use App\Models\session;
@@ -41,7 +42,312 @@ use Carbon\Carbon;
 use App\Models\subjectresult;
 class SingleInsertionController extends Controller
 {
-        public function storeOfferedCourse(Request $request)
+    public function AllDegreeCourses()
+    {
+        try {
+            $data = degree_courses::with(['course', 'program', 'session'])->get()
+                ->groupBy(function ($dc) {
+                    return $dc->session->name . '-' . $dc->session->year;
+                }) // Group by session name-year
+                ->map(function ($sessionGroup) {
+                    return collect($sessionGroup)->groupBy(function ($dc) {
+                        return $dc->program->name;
+                    })->map(function ($programGroup) {
+                        return collect($programGroup)->groupBy('semester')
+                            ->sortKeys()
+                            ->map(function ($semesterGroup) {
+                                return $semesterGroup->map(function ($dc) {
+                                    return [
+                                        'id' => $dc->id,
+                                        'semester' => $dc->semester,
+                                        'course_name' => $dc->course->name ?? '',
+                                        'course_code' => $dc->course->code ?? '',
+                                    ];
+                                })->values();
+                            });
+                    });
+                });
+
+            return response()->json($data, 200);
+
+        } catch (Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+    public function addDegreeCourse(Request $request)
+    {
+        try {
+            $request->validate([
+                'semester' => 'required|integer',
+                'program_name' => 'required|string',
+                'course_id' => 'required|integer',
+                'session_id'=>'required|integer'
+            ]);
+
+            $program = Program::where('name', $request->program_name)->first();
+            if (!$program) {
+                return response()->json(['error' => 'Program not found'], 404);
+            }
+
+            // Check for duplication
+            $exists = degree_courses::where('program_id', $program->id)
+                ->where('course_id', $request->course_id)->where('session_id',$request->se)
+                ->exists();
+
+            if ($exists) {
+                return response()->json(['message' => 'This course already exists for the program'], 409);
+            }
+
+            degree_courses::create([
+                'semester' => $request->semester,
+                'program_id' => $program->id,
+                'course_id' => $request->course_id,
+                'session_id'=>$request->session_id,
+            ]);
+
+            return response()->json(['message' => 'Degree course added successfully'], 201);
+        } catch (Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+    public function deleteDegreeCourse($id)
+    {
+        try {
+            $record = degree_courses::find($id);
+            if (!$record) {
+                return response()->json(['error' => 'Record not found'], 404);
+            }
+
+            $record->delete();
+            return response()->json(['message' => 'Degree course deleted successfully'], 200);
+        } catch (Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+    public function updateDegreeCourse(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'semester' => 'required|integer',
+            ]);
+
+            $record = degree_courses::find($id);
+            if (!$record) {
+                return response()->json(['error' => 'Record not found'], 404);
+            }
+
+            $record->semester = $request->semester;
+            $record->save();
+
+            return response()->json(['message' => 'Semester updated successfully'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+
+    public function getYourDegreeCourses($programName, $session)
+    {
+        try {
+
+            $program = Program::where('name', $programName)->first();
+            $session_id = (new session())->getSessionIdByName($session);
+            if (!$program || !$session_id) {
+                return response()->json(['error' => 'Program not found'], 404);
+            }
+
+            $degreeCourses = degree_courses::where('program_id', $program->id)->where('session_id', $session_id)->get();
+            $courses = $degreeCourses->map(function ($entry) {
+                $course = Course::find($entry->course_id);
+                return [
+                    'semester' => $entry->semester,
+                    'course_name' => $course->name ?? '',
+                    'course_code' => $course->code ?? '',
+                ];
+            });
+            $courses = $courses->sortBy('semester')->values();
+            $courses = $courses->map(function ($item, $index) {
+                return [
+                    ...$item,
+                    'course_no' => $index + 1,
+                ];
+            });
+            $courses = $courses->groupBy('semester')->values();
+            return response()->json(['program' => $programName, 'courses_by_semester' => $courses], 200);
+        } catch (Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function addReEnrollmentRequest(Request $request)
+    {
+        $soc_id = $request->student_offered_course_id;
+
+        $soc = student_offered_courses::with('student')->find($soc_id);
+
+        if (!$soc) {
+            return response()->json(['message' => 'Invalid student_offered_course_id'], 400);
+        }
+
+        $grade = strtoupper($soc->grade);
+
+        if ($grade === 'F') {
+            $reason = "Grade is F: Requested for Re-Enroll";
+        } elseif ($grade === 'D') {
+            $reason = "Requested for Improvement";
+        } else {
+            return response()->json(['message' => 'Request not allowed for this grade'], 403);
+        }
+
+        $requestExists = reenrollment_requests::where('student_offered_course_id', $soc_id)->first();
+        if ($requestExists) {
+            return response()->json(['message' => 'Request already exists'], 409);
+        }
+
+        reenrollment_requests::create([
+            'student_offered_course_id' => $soc_id,
+            'reason' => $reason
+        ]);
+        return response()->json(['message' => 'Request added successfully'], 201);
+    }
+    public function processReEnrollmentRequest(Request $request)
+    {
+        $request->validate([
+            'request_id' => 'required|exists:reenrollment_requests,id',
+            'status' => 'required|in:Accepted,Rejected',
+            'section_id' => 'required'
+        ]);
+
+        $requestEntry = reenrollment_requests::findOrFail($request->request_id);
+
+        if ($request->status === 'Rejected') {
+            $requestEntry->delete();
+            return response()->json(['message' => 'Request rejected successfully.'], 200);
+        }
+        $prevEnrollment = student_offered_courses::find($requestEntry->student_offered_course_id);
+        if (!$prevEnrollment) {
+            return response()->json(['message' => 'Previous enrollment record not found.'], 404);
+        }
+
+        $student_id = $prevEnrollment->student_id;
+        $previous_offered_course = offered_courses::find($prevEnrollment->offered_course_id);
+
+        if (!$previous_offered_course) {
+            return response()->json(['message' => 'Previous offered course not found.'], 404);
+        }
+        $course_id = $previous_offered_course->course_id;
+        $sessionId = (new session())->getCurrentSessionId();
+        if ($sessionId == 0) {
+            return response()->json([
+                'status' => false,
+                'message' => 'No active session. Cannot Process request.'
+            ], 403);
+        }
+        $currentSession = session::find($sessionId);
+        $newOfferedCourse = offered_courses::where('course_id', $course_id)
+            ->where('session_id', $currentSession->id)
+            ->first();
+        if (!$newOfferedCourse) {
+            return response()->json(['message' => 'Course is not yet offered in the current session.'], 400);
+        }
+        try {
+            DB::beginTransaction();
+            $studentOfferedCourseId = $prevEnrollment->id;
+            $subjectResult = subjectresult::where('student_offered_course_id', $studentOfferedCourseId)->first();
+            if ($subjectResult) {
+                $subjectResult->delete();
+            }
+            $offered_course_id = $prevEnrollment->offered_course_id;
+            $section_id = $prevEnrollment->section_id ?? 0;
+
+            $teacherOffered = teacher_offered_courses::where('offered_course_id', $offered_course_id)->where('section_id', $section_id)->first();
+            $teacher_offered_course_id = $teacherOffered ? $teacherOffered->id : null;
+            DB::table('student_exam_result')
+                ->where('student_id', $student_id)
+                ->whereIn('exam_id', function ($q) use ($offered_course_id) {
+                    $q->select('id')->from('exam')->where('offered_course_id', $offered_course_id);
+                })->delete();
+            if ($teacher_offered_course_id) {
+                DB::table('attendance_sheet_sequence')
+                    ->where('student_id', $student_id)
+                    ->where('teacher_offered_course_id', $teacher_offered_course_id)
+                    ->delete();
+            }
+            $attendanceIds = attendance::where('student_id', $student_id)
+                ->when($teacher_offered_course_id, fn($q) => $q->where('teacher_offered_course_id', $teacher_offered_course_id))
+                ->pluck('id');
+
+            if ($attendanceIds->count()) {
+                contested_attendance::whereIn('Attendance_id', $attendanceIds)->delete();
+            }
+            attendance::where('student_id', $student_id)
+                ->when($teacher_offered_course_id, fn($q) => $q->where('teacher_offered_course_id', $teacher_offered_course_id))
+                ->delete();
+            if ($teacher_offered_course_id) {
+                $taskIds = task::where('teacher_offered_course_id', $teacher_offered_course_id)->pluck('id');
+
+                DB::table('student_task_result')
+                    ->where('Student_id', $student_id)
+                    ->whereIn('Task_id', $taskIds)
+                    ->delete();
+
+                DB::table('student_task_submission')
+                    ->where('Student_id', $student_id)
+                    ->whereIn('Task_id', $taskIds)
+                    ->delete();
+            }
+
+            $prevEnrollment->offered_course_id = $newOfferedCourse->id;
+            $prevEnrollment->grade = null;
+            $prevEnrollment->attempt_no = $prevEnrollment->attempt_no + 1;
+            $prevEnrollment->section_id = $request->section_id;
+            $prevEnrollment->save();
+            $requestEntry->delete();
+
+            DB::commit();
+            return response()->json(['message' => 'Re-enrollment processed successfully.']);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'An error occurred: ' . $e->getMessage()], 500);
+        }
+    }
+
+
+    public function viewReEnrollmentRequests()
+    {
+        $requests = reenrollment_requests::with([
+            'studentOfferedCourse.student.program',
+            'studentOfferedCourse.student.section',
+            'studentOfferedCourse.offeredCourse.course',
+            'studentOfferedCourse.offeredCourse.session'
+        ])
+            ->orderByDesc('requested_at')
+            ->get();
+
+        $data = $requests->map(function ($req) {
+            $student = $req->studentOfferedCourse->student ?? null;
+            $course = $req->studentOfferedCourse->offeredCourse->course ?? null;
+            $session = $req->studentOfferedCourse->offeredCourse->session ?? null;
+
+            return [
+                'request_id' => $req->id,
+                'student_name' => $student->name ?? '',
+                'student_image' => $student->image ? asset($student->image) : null,
+                'RegNo' => $student->RegNo ?? '',
+                'program' => $student->program->name ?? '',
+                'semester' => $student->section->semester ?? '',
+                'course_code' => $course->code ?? '',
+                'course_name' => $course->name ?? '',
+                'session' => $session ? "{$session->name}-{$session->year}" : '',
+                'reason' => $req->reason,
+                'status' => $req->status,
+                'requested_at' => $req->requested_at->format('Y-m-d H:i:s'),
+            ];
+        });
+        return response()->json($data);
+    }
+
+    public function storeOfferedCourse(Request $request)
     {
         $request->validate([
             'session_id' => 'required|exists:session,id',
@@ -71,7 +377,7 @@ class SingleInsertionController extends Controller
                 'status' => 'success',
                 'message' => 'Course offered successfully.',
                 'data' => $offered
-            ],200);
+            ], 200);
 
         } catch (Exception $e) {
             return response()->json([
@@ -355,7 +661,7 @@ class SingleInsertionController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Student successfully enrolled in the subject.'
-            ],200);
+            ], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'status' => 'error',
@@ -382,7 +688,7 @@ class SingleInsertionController extends Controller
                 'studentOfferedCourses.section:id',
                 'teacherOfferedCourses.section:id',
             ])->get();
-           
+
 
             $groupedBySession = $offeredCourses->groupBy(function ($course) {
                 return $course->session->name . '-' . $course->session->year;

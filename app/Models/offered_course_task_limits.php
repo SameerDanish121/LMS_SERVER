@@ -16,7 +16,7 @@ class offered_course_task_limits extends Model
         'task_limit',
     ];
 
-    public $timestamps = false; // Since your migration doesn't include created_at/updated_at
+    public $timestamps = false; 
 
    
     public function offeredCourse()

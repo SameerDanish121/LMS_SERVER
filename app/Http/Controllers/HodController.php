@@ -45,7 +45,7 @@ class HodController extends Controller
         try {
             $result = [];
             $offeredCourses = offered_courses::with(['session', 'course'])
-                ->whereHas('session') // Make sure session exists
+                ->whereHas('session') 
                 ->get()
                 ->sortByDesc(fn($course) => $course->session->start_date) // Sort by session start_date descending
                 ->values(); // Reset keys

@@ -1,5 +1,6 @@
 <?php
 use App\Http\Controllers\AllControlsController;
+use App\Models\degree_courses;
 use App\Models\Hod;
 use App\Models\Course;
 use App\Models\parents;
@@ -84,7 +85,17 @@ Route::prefix('Insertion')->group(function () {
     //Offered_Course
     Route::get('/offered_course/all', [SingleInsertionController::class, 'getUnOfferedCoursesAcrossAllSessions']);
     Route::post('/offered_course/add', [SingleInsertionController::class, 'storeOfferedCourse']);
-
+    //RE-Enrollments Request 
+    Route::post('/re_enroll/add', [SingleInsertionController::class, 'addReEnrollmentRequest']);
+    Route::get('/re_enroll/req',  [SingleInsertionController::class, 'viewReEnrollmentRequests']);
+    Route::post('/process-request', [SingleInsertionController::class, 'processReEnrollmentRequest']);
+    //Degree_Course
+    Route::get('/getYourDegreeCourses/{program}/{session}', [SingleInsertionController::class, 'getYourDegreeCourses']);
+   
+    Route::get('/AllDegreeCourses', [SingleInsertionController::class, 'AllDegreeCourses']);
+    Route::post('/addDegreeCourse', [SingleInsertionController::class, 'addDegreeCourse']);
+    Route::delete('/deleteDegreeCourse/{id}', [SingleInsertionController::class, 'deleteDegreeCourse']);
+    Route::put('/updateDegreeCourse/{id}', [SingleInsertionController::class, 'updateDegreeCourse']);
 });
 Route::prefix('Dropdown')->group(function () {
     Route::get('/AllStudent', function () {
@@ -98,6 +109,18 @@ Route::prefix('Dropdown')->group(function () {
     });
     Route::get('/AllCourse', function () {
         return Course::all('name')->pluck('name');
+    });
+    Route::get('/AllCourseData', function () {
+       $offeredCourses = Course::get()
+            ->map(function ($course) {
+                return [
+                    'id' => $course->id,
+                    'course' => $course->name,
+                    'code' => $course->code,
+                ];
+            })
+            ->values();
+        return response()->json($offeredCourses, 200);
     });
     Route::get('/AllSections', function () {
         $sections = section::all();
@@ -184,8 +207,8 @@ Route::prefix('Dropdown')->group(function () {
         })->values();
         return response()->json($sections, 200);
     });
-     Route::get('/AllParentData', function () {
-        $sections = parents ::all()->map(function ($student) {
+    Route::get('/AllParentData', function () {
+        $sections = parents::all()->map(function ($student) {
             return [
                 'id' => $student->id,
                 'name' => $student->name,
@@ -471,7 +494,7 @@ Route::prefix('parents')->group(function () {
     Route::put('/update-email/{parentId}', [ParentsController::class, 'UpdateEmail']);
     Route::put('/update-password/{parentId}', [ParentsController::class, 'UpdatePassword']);
     Route::get('/view', [ParentsController::class, 'getGroupedParents']);
-    Route::post('/add/exsisting', [ParentsController::class, 'AssignExistingParentToStudent']); 
+    Route::post('/add/exsisting', [ParentsController::class, 'AssignExistingParentToStudent']);
     Route::get('/getStudent/data', [StudentsController::class, 'DirectLogin']);
 });
 
