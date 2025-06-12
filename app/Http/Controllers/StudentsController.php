@@ -199,7 +199,6 @@ class StudentsController extends Controller
             rename($compressedFile, $filePath);
         }
     }
-
     private function compressPDF($filePath)
     {
         $compressedFile = str_replace('.pdf', '_compressed.pdf', $filePath);
@@ -210,7 +209,6 @@ class StudentsController extends Controller
             rename($compressedFile, $filePath); // Replace with compressed file
         }
     }
-
     // private function compressImage($filePath)
     // {
 
@@ -575,6 +573,7 @@ class StudentsController extends Controller
                     "Image" => $student->image ? asset($student->image) : null,
                     "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
                     "Task_Info" => StudentManagement::getDueSoonUnsubmittedTasks($student_id),
+                    
                 ];
                 if ($rescheduled) {
                     $studentInfo['Notice'] = $Notice;
@@ -716,7 +715,7 @@ class StudentsController extends Controller
                 if ($rescheduled) {
                     $Teacher['Notice'] = $Notice;
                 } else if (excluded_days::checkHoliday()) {
-                    $studentInfo['Notice'] = excluded_days::checkHolidayReason();
+                    $Teacher['Notice'] = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
                     'Type' => $role,
@@ -916,7 +915,7 @@ class StudentsController extends Controller
                 $teacher = teacher::where('user_id', $user->id)
                     ->with(['user'])
                     ->first();
-                $attribute = excluded_days::checkHoliday() ? 'Holiday' : 'Timetable';
+                $attribute = excluded_days::checkHoliday() ? 'Timetable' : 'Timetable';
                 $rescheduled = excluded_days::checkReschedule();
                 if ($rescheduled) {
                     $Notice = excluded_days::checkReasonOfReschedule();
@@ -925,6 +924,7 @@ class StudentsController extends Controller
                 } else {
                     $timetable = timetable::getTodayTimetableOfTeacherById($teacher->id);
                 }
+               
                 $Teacher = [
                     "id" => $teacher->id,
                     "name" => $teacher->name,
@@ -932,25 +932,27 @@ class StudentsController extends Controller
                     "gender" => $teacher->gender,
                     "Date Of Birth" => $teacher->date_of_birth,
                     "Username" => $teacher->user->username,
-                    "email" => $teacher->user->email ?? null,
                     "Password" => $teacher->user->password,
+                    "email" => $teacher->user->email ?? null,
                     "Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?? 'No Session is Active',
-                    $attribute => excluded_days::checkHoliday() ? excluded_days::checkHolidayReason() : $timetable,
+                    $attribute => excluded_days::checkHoliday() ? [] : $timetable,
                     "image" => $teacher->image ? asset($teacher->image) : null,
                     "week" => (new session())->getCurrentSessionWeek() ?? 0
                 ];
                 if ($rescheduled) {
-                    $Teacher['Notice !'] = $Notice;
+                    $Teacher['Notice'] = $Notice;
+                } else if (excluded_days::checkHoliday()) {
+                    $Teacher['Notice'] = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
                     'Type' => $role,
                     'TeacherInfo' => $Teacher,
                 ], 200);
-            } else if ($role == 'JuniorLecturer') {
+            }  else if ($role == 'JuniorLecturer') {
                 $jl = juniorlecturer::where('user_id', $user->id)
                     ->with(['user'])
                     ->first();
-                $attribute = excluded_days::checkHoliday() ? 'Holiday' : 'Timetable';
+                $attribute = excluded_days::checkHoliday() ? 'Timetable' : 'Timetable';
                 $rescheduled = excluded_days::checkReschedule();
                 if ($rescheduled) {
                     $Notice = excluded_days::checkReasonOfReschedule();
@@ -960,6 +962,7 @@ class StudentsController extends Controller
                 } else {
                     $timetable = timetable::getTodayTimetableOfJuniorLecturerById($jl->id);
                 }
+             
                 $Teacher = [
                     "id" => $jl->id,
                     "name" => $jl->name,
@@ -969,13 +972,15 @@ class StudentsController extends Controller
                     "Username" => $jl->user->username,
                     "Password" => $jl->user->password,
                     "email" => $teacher->user->email ?? null,
+                    "week" => (new session())->getCurrentSessionWeek() ?? 0,
                     "Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?? 'No Session is Active',
-                    $attribute => excluded_days::checkHoliday() ? excluded_days::checkHolidayReason() : $timetable,
+                    $attribute => excluded_days::checkHoliday() ? [] : $timetable,
                     "image" => $jl->image ? asset($jl->image) : null,
-                    "week" => (new session())->getCurrentSessionWeek() ?? 0
                 ];
                 if ($rescheduled) {
-                    $Teacher['Notice !'] = $Notice;
+                    $Teacher['Notice'] = $Notice;
+                } else if (excluded_days::checkHoliday()) {
+                    $Teacher['Notice'] = excluded_days::checkHolidayReason();
                 }
                 return response()->json([
                     'Type' => $role,

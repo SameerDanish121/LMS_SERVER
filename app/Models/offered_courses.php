@@ -35,6 +35,10 @@ class offered_courses extends Model
     {
         return $this->hasMany(teacher_offered_courses::class, 'offered_course_id');
     }
+    public function offeredCourseTaskLimits()
+    {
+        return $this->hasMany(offered_course_task_limits::class, 'offered_course_id');
+    }
 
     public function studentOfferedCourses()
     {

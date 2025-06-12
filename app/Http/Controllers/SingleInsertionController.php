@@ -7,6 +7,7 @@ use App\Models\degree_courses;
 use App\Models\excluded_days;
 use App\Models\grader_requests;
 use App\Models\notification;
+use App\Models\offered_course_task_limits;
 use App\Models\offered_courses;
 use App\Models\program;
 use App\Models\reenrollment_requests;
@@ -42,6 +43,107 @@ use Carbon\Carbon;
 use App\Models\subjectresult;
 class SingleInsertionController extends Controller
 {
+    public function viewGroupedOfferedCourses()
+    {
+        try {
+            $offeredCourses = offered_courses::with(['session', 'course', 'course.prerequisite', 'offeredCourseTaskLimits'])
+                ->get();
+            $grouped = $offeredCourses->groupBy(function ($course) {
+                return $course->session->name . '-' . $course->session->year;
+            });
+            $sorted = $grouped->sortByDesc(function ($courses, $key) {
+                return optional($courses->first()->session)->start_date;
+            });
+            $result = [];
+            foreach ($sorted as $sessionKey => $courses) {
+                $result[$sessionKey] = [];
+                foreach ($courses as $course) {
+                    $courseData = [
+                        'offered_course_id' => $course->id,
+                        'code' => $course->course->code,
+                        'name' => $course->course->name,
+                        'credit_hours' => $course->course->credit_hours,
+                        'pre_req_main' => $course->course->prerequisite ? $course->course->prerequisite->name : null,
+                        'program_id' => $course->course->program_id,
+                        'type' => $course->course->type,
+                        'description' => $course->course->description,
+                        'lab' => $course->course->lab==1?'Yes':'No',
+                        'task_limits' => $course->offeredCourseTaskLimits->map(function ($limit) {
+                            return [
+                                'id'=>$limit->id,
+                                'task_type' => $limit->task_type,
+                                'task_limit' => $limit->task_limit
+                            ];
+                        })->values(),
+                    ];
+                    $result[$sessionKey][] = $courseData;
+                }
+            }
+
+            return response()->json([
+                'status' => true,
+                'data' => $result
+            ], 200);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Error fetching data',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function insertTaskLimit(Request $request)
+    {
+        $request->validate([
+            'offered_course_id' => 'required|exists:offered_courses,id',
+            'task_type' => 'required|in:Quiz,Assignment,LabTask',
+            'task_limit' => 'required|integer|min:1',
+        ]);
+        $offeredCourse = offered_courses::with(['course'])->where('id',$request->offered_course_id)->first();
+        if ($request->task_type === 'LabTask' && $offeredCourse->course->lab == 0) {
+            return response()->json(['error' => 'LabTask not allowed for this course.'], 400);
+        }
+        $existing = offered_course_task_limits::where([
+            'offered_course_id' => $request->offered_course_id,
+            'task_type' => $request->task_type,
+        ])->first();
+
+        if ($existing) {
+            return response()->json(['error' => 'This task type already exists for this course.'], 409);
+        }
+
+        $newLimit = offered_course_task_limits::create([
+            'offered_course_id' => $request->offered_course_id,
+            'task_type' => $request->task_type,
+            'task_limit' => $request->task_limit,
+        ]);
+        return response()->json(['message' => 'Task limit added successfully.', 'data' => $newLimit], 201);
+    }
+    public function editTaskLimit(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|exists:offered_course_task_limits,id',
+            'task_limit' => 'required|integer|min:1',
+        ]);
+
+        $limit = offered_course_task_limits::find($request->id);
+        $limit->task_limit = $request->task_limit;
+        $limit->save();
+
+        return response()->json(['message' => 'Task limit updated successfully.', 'data' => $limit], 200);
+    }
+
+    public function deleteTaskLimit(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|exists:offered_course_task_limits,id',
+        ]);
+        $limit = offered_course_task_limits::find($request->id);
+        $limit->delete();
+        return response()->json(['message' => 'Task limit deleted successfully.'], 200);
+    }
     public function AllDegreeCourses()
     {
         try {
@@ -81,7 +183,7 @@ class SingleInsertionController extends Controller
                 'semester' => 'required|integer',
                 'program_name' => 'required|string',
                 'course_id' => 'required|integer',
-                'session_id'=>'required|integer'
+                'session_id' => 'required|integer'
             ]);
 
             $program = Program::where('name', $request->program_name)->first();
@@ -91,7 +193,7 @@ class SingleInsertionController extends Controller
 
             // Check for duplication
             $exists = degree_courses::where('program_id', $program->id)
-                ->where('course_id', $request->course_id)->where('session_id',$request->se)
+                ->where('course_id', $request->course_id)->where('session_id', $request->se)
                 ->exists();
 
             if ($exists) {
@@ -102,7 +204,7 @@ class SingleInsertionController extends Controller
                 'semester' => $request->semester,
                 'program_id' => $program->id,
                 'course_id' => $request->course_id,
-                'session_id'=>$request->session_id,
+                'session_id' => $request->session_id,
             ]);
 
             return response()->json(['message' => 'Degree course added successfully'], 201);

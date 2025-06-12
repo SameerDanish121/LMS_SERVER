@@ -206,7 +206,7 @@ class attendance extends Model
                     ];
             }
         } catch (Exception $ex) {
-            return $ex->getMessage();
+            return [];
         }
         return $attendanceData;
     }

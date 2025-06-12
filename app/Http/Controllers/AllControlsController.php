@@ -60,7 +60,7 @@ public function updatePassword(Request $request)
     try {
         $request->validate([
             'user_id' => 'required|exists:user,id',
-            'password' => 'required|string|min:6',
+            'password' => 'required|string|min:2',
         ]);
 
         $user = user::find($request->user_id);

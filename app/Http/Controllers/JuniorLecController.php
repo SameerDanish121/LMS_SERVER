@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers;
 use App\Models\datacell;
 use App\Models\grader_task;
@@ -21,10 +20,8 @@ use App\Models\dayslot;
 use App\Models\program;
 use App\Models\section;
 use App\Models\session;
-
 use App\Models\student;
 use App\Models\teacher;
-
 use App\Models\question;
 use App\Models\timetable;
 use Laravel\Pail\Options;
@@ -65,8 +62,6 @@ use Illuminate\Support\Facades\Validator;
 use App\Models\t_coursecontent_topic_status;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-
-
 class JuniorLecController extends Controller
 {
     public function YourCurrentSessionCourses(Request $request)

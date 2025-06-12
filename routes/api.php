@@ -87,15 +87,19 @@ Route::prefix('Insertion')->group(function () {
     Route::post('/offered_course/add', [SingleInsertionController::class, 'storeOfferedCourse']);
     //RE-Enrollments Request 
     Route::post('/re_enroll/add', [SingleInsertionController::class, 'addReEnrollmentRequest']);
-    Route::get('/re_enroll/req',  [SingleInsertionController::class, 'viewReEnrollmentRequests']);
+    Route::get('/re_enroll/req', [SingleInsertionController::class, 'viewReEnrollmentRequests']);
     Route::post('/process-request', [SingleInsertionController::class, 'processReEnrollmentRequest']);
     //Degree_Course
     Route::get('/getYourDegreeCourses/{program}/{session}', [SingleInsertionController::class, 'getYourDegreeCourses']);
-   
     Route::get('/AllDegreeCourses', [SingleInsertionController::class, 'AllDegreeCourses']);
     Route::post('/addDegreeCourse', [SingleInsertionController::class, 'addDegreeCourse']);
     Route::delete('/deleteDegreeCourse/{id}', [SingleInsertionController::class, 'deleteDegreeCourse']);
     Route::put('/updateDegreeCourse/{id}', [SingleInsertionController::class, 'updateDegreeCourse']);
+    //task_limit for audit
+    Route::post('/insert-task-limit', [SingleInsertionController::class, 'insertTaskLimit']);
+    Route::post('/edit-task-limit', [SingleInsertionController::class, 'editTaskLimit']);
+    Route::post('/delete-task-limit', [SingleInsertionController::class, 'deleteTaskLimit']);
+    Route::get('/AllLimitRecord', [SingleInsertionController::class, 'viewGroupedOfferedCourses']);
 });
 Route::prefix('Dropdown')->group(function () {
     Route::get('/AllStudent', function () {
@@ -111,7 +115,7 @@ Route::prefix('Dropdown')->group(function () {
         return Course::all('name')->pluck('name');
     });
     Route::get('/AllCourseData', function () {
-       $offeredCourses = Course::get()
+        $offeredCourses = Course::get()
             ->map(function ($course) {
                 return [
                     'id' => $course->id,
@@ -373,6 +377,10 @@ Route::prefix('Teachers')->group(function () {
 
     Route::post('/task-consideration', [TeachersController::class, 'storeConsideration']);
     Route::get('/summary', [TeachersController::class, 'getConsiderationSummary']);
+
+    Route::get('/audit', [CourseContentContoller::class, 'getAuditReportOfTeachersForASubject']);
+
+
 });
 Route::prefix('Un-usable')->group(function () {
     Route::get('/load-file', [TeachersController::class, 'LoadFile']);
@@ -496,6 +504,7 @@ Route::prefix('parents')->group(function () {
     Route::get('/view', [ParentsController::class, 'getGroupedParents']);
     Route::post('/add/exsisting', [ParentsController::class, 'AssignExistingParentToStudent']);
     Route::get('/getStudent/data', [StudentsController::class, 'DirectLogin']);
+    Route::get('/Notification', [ParentsController::class, 'Notification']);
 });
 
 

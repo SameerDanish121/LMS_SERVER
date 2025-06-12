@@ -253,10 +253,15 @@ class timetable extends Model
                     'Teacher' => $item->teacher ? $item->teacher->name : 'N/A',
                     'venue' => $item->venue->venue ?? 'N/A',
                     'day' => $item->dayslot->day ?? 'N/A',
-                    'start_time' => $item->dayslot->start_time ? Carbon::parse($item->dayslot->start_time)->format('g:i A') : null,
-                    'end_time' => $item->dayslot->end_time ? Carbon::parse($item->dayslot->end_time)->format('g:i A') : null,
+                    'start_time' => $item->dayslot->start_time ?$item->dayslot->start_time : null,
+                    'end_time' => $item->dayslot->end_time ? $item->dayslot->end_time : null,
                 ];
-            });
+            })->sortBy(function ($item) {
+             
+                $time = Carbon::createFromFormat('H:i:s', $item['start_time']);
+                return $time->hour < 7 ? $time->hour + 12 : $time->hour;
+            })
+            ->values();
         return $timetable;
     }
 
@@ -315,7 +320,7 @@ class timetable extends Model
                     'end_time' => $item->dayslot->end_time ? $item->dayslot->end_time : null,
                 ];
             })->sortBy(function ($item) {
-                // Convert start_time to a sortable format
+             
                 $time = Carbon::createFromFormat('H:i:s', $item['start_time']);
                 return $time->hour < 7 ? $time->hour + 12 : $time->hour;
             })
