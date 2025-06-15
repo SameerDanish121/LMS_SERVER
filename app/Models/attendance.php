@@ -138,7 +138,6 @@ class attendance extends Model
                     $query->where('session_id', (new Session())->getCurrentSessionId());
                 })
                 ->get();
-           
             foreach ($enrollments as $enrollment) {
                 $offeredCourse = $enrollment->offered_course_id;
                 $teacherOfferedCourse = teacher_offered_courses::
@@ -156,11 +155,7 @@ class attendance extends Model
                     $totalAbsent =$total_Classes - $totalPresent;
                     $percentage = $total_Classes > 0 ? ($totalPresent / $total_Classes) * 100 : 0;
                     $oc=offered_courses::with(['course'])->find($offeredCourse);
-
-
-
                     $pendingRequests = contested_attendance::with(['attendance.venue', 'attendance.teacherOfferedCourse'])
-                   
                     ->whereHas('attendance', function ($query) use ($studentId) {
                         $query->where('student_id',$studentId);
                     })

@@ -27,15 +27,103 @@ use App\Http\Controllers\DatacellModuleController;
 use App\Http\Controllers\HodController;
 use App\Http\Controllers\SingleInsertionController;
 use App\Http\Controllers\ParentsController;
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Authentication~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
-Route::get('/Login', [StudentsController::class, 'Login']);
-Route::post('/forgot-password', [AuthenticationController::class, 'sendOTP']);
-Route::post('/verify-otp', [AuthenticationController::class, 'verifyOTP']);
-Route::post('/update-pass', [AuthenticationController::class, 'updatePassword']);
-Route::post('/verify/login', [AuthenticationController::class, 'verifyLoginOTP']);
-Route::post('/store-fcmtoken', [NotificationController::class, 'storeFcmToken']);
-Route::get('/remember', [StudentsController::class, 'RememberMe']);
-Route::post('/student/notification', [NotificationController::class, 'SendNotificationToStudent']);
+
+
+//--------------------------------------------------( WEB SIDE )---------------------------------------------------//
+Route::prefix('Admin')->group(function () {
+    Route::get('/AllStudent', [AdminController::class, 'AllStudent']);
+    Route::get('/sections', [AdminController::class, 'showSections']);
+    Route::get('/teachers', [AdminController::class, 'AllTeacher']);
+    Route::get('/courses', [AdminController::class, 'AllCourse']);
+    Route::get('/junior-lectures', [AdminController::class, 'allJuniorLecturers']);
+    Route::get('/grades', [AdminController::class, 'AllGrades']);
+    Route::get('/sessions', [AdminController::class, 'getAllSessions']);
+    Route::get('/viewTranscript', [StudentsController::class, 'ViewTranscript']);
+    Route::get('/getCourseContent', [AdminController::class, 'getCourseContentWithTopics']);
+    Route::get('/getCourseAllocation', [AdminController::class, 'getAllAllocatedCourses']);
+    Route::get('/un-assigned/teacher-for-grader', [AdminController::class, 'unassignedTeacherWithGrader']);
+    Route::post('/update-add-program', [AdminController::class, 'addOrUpdateProgram']);
+    Route::get('/teacher-graders', [AdminController::class, 'getAllTeacherGraders']);
+    Route::get('/course-content', [AdminController::class, 'getCourseContent']);
+    Route::get('/search-admin', [AdminController::class, 'searchAdminByName']);
+    Route::get('/search-datacell', [AdminController::class, 'GetDatacell']);
+    Route::get('/Current-Courses/{sessionId}', [AdminController::class, 'getCoursesInCurrentSession']);
+    Route::get('/Courses-Not-In-Session/{sessionId}', [AdminController::class, 'getCoursesNotInSession']);
+    Route::get('/Teachers-With-No-Courses/{sessionId}', [AdminController::class, 'getTeachersWithNoCourses']);
+    Route::get('/Teacher-Courses/{teacherId}/{sessionId}', [AdminController::class, 'getTeacherEnrolledCourses']);
+    Route::get('/Students-Not-Enrolled-Courses/{sessionId}', [AdminController::class, 'getStudentsNotEnrolledInSession']);
+    Route::get('/Student-Courses/{studentName}/{sessionId}', [AdminController::class, 'getStudentCoursesInSession']);
+    Route::get('/failed-courses', [AdminController::class, 'getFailedStudents']);
+    Route::get('/failed-students', [AdminController::class, 'getFailedStudentsInOfferedCourse']);
+    Route::get('/TeacherJLec', [AdminController::class, 'getTeacherJuniorLecturers']);
+    Route::get('/assigned-graders', [AdminController::class, 'getTeachersWithAssignedGraders']);
+    Route::get('/TeacherwithNoGrader', [AdminController::class, 'getTeachersWithoutGraders']);
+    Route::get('/unassigned-graders', [AdminController::class, 'getUnassignedGraders']);
+    Route::get('/Teacherfreeslots', [AdminController::class, 'noClassesToday']);
+    Route::get('/TeacherJLecList', [AdminController::class, 'getAllTeachersWithJuniorLecturers']);
+    Route::get('/history', [AdminController::class, 'getGraderHistory']);
+
+    Route::post('/grader_req/add', [SingleInsertionController::class, 'StoreGraderRequest']);
+    Route::post('/grader_req/process', [SingleInsertionController::class, 'processRequest']);   //Processing
+    Route::get('/grader_req/list', [SingleInsertionController::class, 'pendingRequests']);      //View-Request
+
+    Route::get('/excluded-days', [SingleInsertionController::class, 'viewExcludedDays']);        // View all
+    Route::post('/excluded-days', [SingleInsertionController::class, 'storeExcludedDay']);       // Insert
+    Route::put('/excluded-days/{id}', [SingleInsertionController::class, 'updateExcludedDay']);  // Update
+    Route::delete('/excluded-days/{id}', [SingleInsertionController::class, 'deleteExcludedDay']); // Delete
+
+});
+Route::prefix('Datacells')->group(function () {
+    Route::get('/temporary-enrollments', [TeachersController::class, 'getTemporaryEnrollmentsRequest']);
+    Route::post('/process-temporary-enrollments', [TeachersController::class, 'ProcessTemporaryEnrollments']);
+    Route::post('/assign-grader', [ExtraKhattaController::class, 'assignGrader']);
+    Route::post('/add-grader', [ExtraKhattaController::class, 'AddGrader']);
+
+
+    Route::post('/enroll-student', [ExtraKhattaController::class, 'addStudentEnrollment']);
+    Route::post('/NewOfferedCourse', [DatacellsController::class, 'AddNewOfferedCourse']);
+    Route::post('/offered-courses/add-or-check', [ExtraKhattaController::class, 'addOrCheckOfferedCourses']);
+    Route::post('/teacher-offered-courses/add-multiple', [ExtraKhattaController::class, 'addTeacherOfferedCourses']);
+    Route::post('/teacher-offered-courses/update-or-insert-multiple', [ExtraKhattaController::class, 'updateOrInsertTeacherOfferedCourses']);
+    Route::post('/assign-junior-lecturer', [ExtraKhattaController::class, 'assignJuniorLecturer']);
+    Route::post('/update-or-create-junior-lecturer', [ExtraKhattaController::class, 'updateOrCreateTeacherJuniorLecturer']);
+    Route::post('/update/{hod_id}', [DatacellsController::class, 'updateDatacellInfo']);
+    Route::get('/all-users', [AllControlsController::class, 'allUser']);
+    Route::post('/update-email', [AllControlsController::class, 'updateEmail']);
+    Route::post('/update-password', [AllControlsController::class, 'updatePassword']);
+});
+Route::prefix('Hod')->group(function () {
+    Route::get('/content', [HodController::class, 'getAllCourseContents']);
+    Route::post('/add-course', [HodController::class, 'addCourse']);
+    Route::post('/add-teacher', [HodController::class, 'AddSingleTeacher']);
+    Route::post('/add-junior', [HodController::class, 'AddSingleJunior']);
+    Route::post('/link-topics', [HodController::class, 'linkTopicsToCourseContent']);
+    Route::post('/content', [CourseContentContoller::class, 'AddSingleCourseContent']);
+    Route::get('/offered-courses/grouped', [HodController::class, 'getGroupedOfferedCoursesBySession']);
+    Route::post('/content/update', [HodController::class, 'updateContent']);
+    Route::post('/content/copy', [HodController::class, 'CopySemester']);
+    Route::get('/exam/all', [HodController::class, 'getExamGroupedBySession']);
+    Route::post('/exam/update', [HodController::class, 'updateExam']);
+    Route::get('/allocation/history', [HodController::class, 'getCourseAllocationHistory']);
+    Route::post('/allocation/add', [HodController::class, 'addTeacherOfferedCourse']);
+    Route::post('/allocation/update', [HodController::class, 'updateTeacher']);
+    Route::post('/allocation/junior/add_update', [HodController::class, 'assignOrUpdateJuniorLecturer']);
+    Route::post('/update/{hod_id}', [HodController::class, 'updateHODInfo']);
+});
+//--------------------------------------------------( WEB SIDE )---------------------------------------------------//
+
+
+
+
+
+
+
+
+
+
+
+//--------------------------------------------------( GENERIC )---------------------------------------------------//
+
 Route::prefix('Uploading')->group(function () {
     Route::post('/uplaod/Result', [DatacellModuleController::class, 'UploadExamAwardList']);
     Route::post('/uplaod/Topic', [DatacellModuleController::class, 'UploadCourseContentTopic']);
@@ -257,70 +345,30 @@ Route::prefix('Archives')->group(function () {
     Route::post('/compress-folder', [StudentsController::class, 'compressFolder']);
     Route::delete('/DeleteFolderByPath', [DatacellModuleController::class, 'DeleteFolderByPath']);
 });
-Route::prefix('Admin')->group(function () {
-    Route::get('/AllStudent', [AdminController::class, 'AllStudent']);
-    Route::get('/sections', [AdminController::class, 'showSections']);
-    Route::get('/teachers', [AdminController::class, 'AllTeacher']);
-    Route::get('/courses', [AdminController::class, 'AllCourse']);
-    Route::get('/junior-lectures', [AdminController::class, 'allJuniorLecturers']);
-    Route::get('/grades', [AdminController::class, 'AllGrades']);
-    Route::get('/sessions', [AdminController::class, 'getAllSessions']);
-    Route::get('/viewTranscript', [StudentsController::class, 'ViewTranscript']);
-    Route::get('/getCourseContent', [AdminController::class, 'getCourseContentWithTopics']);
-    Route::get('/getCourseAllocation', [AdminController::class, 'getAllAllocatedCourses']);
-    Route::get('/un-assigned/teacher-for-grader', [AdminController::class, 'unassignedTeacherWithGrader']);
-    Route::post('/update-add-program', [AdminController::class, 'addOrUpdateProgram']);
-    Route::get('/teacher-graders', [AdminController::class, 'getAllTeacherGraders']);
-    Route::get('/course-content', [AdminController::class, 'getCourseContent']);
-    Route::get('/search-admin', [AdminController::class, 'searchAdminByName']);
-    Route::get('/search-datacell', [AdminController::class, 'GetDatacell']);
-    Route::get('/Current-Courses/{sessionId}', [AdminController::class, 'getCoursesInCurrentSession']);
-    Route::get('/Courses-Not-In-Session/{sessionId}', [AdminController::class, 'getCoursesNotInSession']);
-    Route::get('/Teachers-With-No-Courses/{sessionId}', [AdminController::class, 'getTeachersWithNoCourses']);
-    Route::get('/Teacher-Courses/{teacherId}/{sessionId}', [AdminController::class, 'getTeacherEnrolledCourses']);
-    Route::get('/Students-Not-Enrolled-Courses/{sessionId}', [AdminController::class, 'getStudentsNotEnrolledInSession']);
-    Route::get('/Student-Courses/{studentName}/{sessionId}', [AdminController::class, 'getStudentCoursesInSession']);
-    Route::get('/failed-courses', [AdminController::class, 'getFailedStudents']);
-    Route::get('/failed-students', [AdminController::class, 'getFailedStudentsInOfferedCourse']);
-    Route::get('/TeacherJLec', [AdminController::class, 'getTeacherJuniorLecturers']);
-    Route::get('/assigned-graders', [AdminController::class, 'getTeachersWithAssignedGraders']);
-    Route::get('/TeacherwithNoGrader', [AdminController::class, 'getTeachersWithoutGraders']);
-    Route::get('/unassigned-graders', [AdminController::class, 'getUnassignedGraders']);
-    Route::get('/Teacherfreeslots', [AdminController::class, 'noClassesToday']);
-    Route::get('/TeacherJLecList', [AdminController::class, 'getAllTeachersWithJuniorLecturers']);
-    Route::get('/history', [AdminController::class, 'getGraderHistory']);
-
-    Route::post('/grader_req/add', [SingleInsertionController::class, 'StoreGraderRequest']);
-    Route::post('/grader_req/process', [SingleInsertionController::class, 'processRequest']);   //Processing
-    Route::get('/grader_req/list', [SingleInsertionController::class, 'pendingRequests']);      //View-Request
-
-    Route::get('/excluded-days', [SingleInsertionController::class, 'viewExcludedDays']);        // View all
-    Route::post('/excluded-days', [SingleInsertionController::class, 'storeExcludedDay']);       // Insert
-    Route::put('/excluded-days/{id}', [SingleInsertionController::class, 'updateExcludedDay']);  // Update
-    Route::delete('/excluded-days/{id}', [SingleInsertionController::class, 'deleteExcludedDay']); // Delete
-
-});
-Route::prefix('Datacells')->group(function () {
-    Route::get('/temporary-enrollments', [TeachersController::class, 'getTemporaryEnrollmentsRequest']);
-    Route::post('/process-temporary-enrollments', [TeachersController::class, 'ProcessTemporaryEnrollments']);
-    Route::post('/assign-grader', [ExtraKhattaController::class, 'assignGrader']);
-    Route::post('/add-grader', [ExtraKhattaController::class, 'AddGrader']);
+//--------------------------------------------------( GENERIC )---------------------------------------------------//
 
 
-    Route::post('/enroll-student', [ExtraKhattaController::class, 'addStudentEnrollment']);
-    Route::post('/NewOfferedCourse', [DatacellsController::class, 'AddNewOfferedCourse']);
-    Route::post('/offered-courses/add-or-check', [ExtraKhattaController::class, 'addOrCheckOfferedCourses']);
-    Route::post('/teacher-offered-courses/add-multiple', [ExtraKhattaController::class, 'addTeacherOfferedCourses']);
-    Route::post('/teacher-offered-courses/update-or-insert-multiple', [ExtraKhattaController::class, 'updateOrInsertTeacherOfferedCourses']);
-    Route::post('/assign-junior-lecturer', [ExtraKhattaController::class, 'assignJuniorLecturer']);
-    Route::post('/update-or-create-junior-lecturer', [ExtraKhattaController::class, 'updateOrCreateTeacherJuniorLecturer']);
-    Route::post('/update/{hod_id}', [DatacellsController::class, 'updateDatacellInfo']);
-    Route::get('/all-users', [AllControlsController::class, 'allUser']);
-    Route::post('/update-email', [AllControlsController::class, 'updateEmail']);
-    Route::post('/update-password', [AllControlsController::class, 'updatePassword']);
 
 
-});
+
+
+
+
+
+
+
+
+//--------------------------------------------------( ANDROID SIDE )---------------------------------------------------//
+Route::get('/notifications/fetch-latest', [NotificationController::class, 'fetchNewNotifications']);
+Route::get('/Login', [StudentsController::class, 'Login']);
+Route::post('/forgot-password', [AuthenticationController::class, 'sendOTP']);
+Route::post('/verify-otp', [AuthenticationController::class, 'verifyOTP']);
+Route::post('/update-pass', [AuthenticationController::class, 'updatePassword']);
+Route::post('/verify/login', [AuthenticationController::class, 'verifyLoginOTP']);
+Route::post('/store-fcmtoken', [NotificationController::class, 'storeFcmToken']);
+Route::get('/remember', [StudentsController::class, 'RememberMe']);
+Route::post('/student/notification', [NotificationController::class, 'SendNotificationToStudent']);
+Route::get('/notifications/user', action: [NotificationController::class, 'fetchUserNotifications']);
 Route::prefix('Teachers')->group(function () {
     Route::post('/add-or-update-feedbacks', [TeachersController::class, 'AddFeedback']);
     Route::get('/contest-list', [TeachersController::class, 'ContestList']);
@@ -377,21 +425,10 @@ Route::prefix('Teachers')->group(function () {
 
     Route::post('/task-consideration', [TeachersController::class, 'storeConsideration']);
     Route::get('/summary', [TeachersController::class, 'getConsiderationSummary']);
-
+    //Audit Report and View Details
     Route::get('/audit', [CourseContentContoller::class, 'getAuditReportOfTeachersForASubject']);
-
-
+    Route::get('/section/details/{teacher_offered_course_id}', [JuniorLecController::class, 'getSectionDetails']);
 });
-Route::prefix('Un-usable')->group(function () {
-    Route::get('/load-file', [TeachersController::class, 'LoadFile']);
-    Route::get('/CanBePromoted', [ExtraKhattaController::class, 'Sample']);
-    Route::post('/send-Notification', [StudentsController::class, 'sendNotification']);
-    Route::post('/update-datacell-image', [DatacellsController::class, 'updateDataCellImage']);
-    Route::post('/add-session', [AdminController::class, 'addSingleSession']);
-    Route::post('/update-admin-image', [AdminController::class, 'updateAdminImage']);
-    Route::post('/EnrollStudent', [DatacellsController::class, 'NewEnrollment']);
-});
-//////////////////////////////////////////////////////FINISHED/////////////////////////////////////////////////////
 Route::prefix('JuniorLec')->group(function () {
     Route::get('classestoday/{juniorLecturerId}', [JuniorLecController::class, 'juniorTodayClassesWithStatus']);
     Route::get('/your-courses', [JuniorLecController::class, 'YourCourses']);
@@ -475,26 +512,6 @@ Route::prefix('Grader')->group(function () {
     Route::post('/SubmitTaskResult', [GraderController::class, 'SubmitNumber']);
     Route::post('/SubmitTaskResultList', [GraderController::class, 'SubmitNumberList']);
 });
-Route::prefix('Hod')->group(function () {
-    Route::get('/content', [HodController::class, 'getAllCourseContents']);
-    Route::post('/add-course', [HodController::class, 'addCourse']);
-    Route::post('/add-teacher', [HodController::class, 'AddSingleTeacher']);
-    Route::post('/add-junior', [HodController::class, 'AddSingleJunior']);
-    Route::post('/link-topics', [HodController::class, 'linkTopicsToCourseContent']);
-    Route::post('/content', [CourseContentContoller::class, 'AddSingleCourseContent']);
-    Route::get('/offered-courses/grouped', [HodController::class, 'getGroupedOfferedCoursesBySession']);
-    Route::post('/content/update', [HodController::class, 'updateContent']);
-    Route::post('/content/copy', [HodController::class, 'CopySemester']);
-    Route::get('/exam/all', [HodController::class, 'getExamGroupedBySession']);
-    Route::post('/exam/update', [HodController::class, 'updateExam']);
-
-    Route::get('/allocation/history', [HodController::class, 'getCourseAllocationHistory']);
-    Route::post('/allocation/add', [HodController::class, 'addTeacherOfferedCourse']);
-    Route::post('/allocation/update', [HodController::class, 'updateTeacher']);
-    Route::post('/allocation/junior/add_update', [HodController::class, 'assignOrUpdateJuniorLecturer']);
-    Route::post('/update/{hod_id}', [HodController::class, 'updateHODInfo']);
-
-});
 Route::prefix('parents')->group(function () {
     Route::post('/add', [ParentsController::class, 'AddParents']);
     Route::put('/update/{parentId}', [ParentsController::class, 'Update']);
@@ -506,13 +523,34 @@ Route::prefix('parents')->group(function () {
     Route::get('/getStudent/data', [StudentsController::class, 'DirectLogin']);
     Route::get('/Notification', [ParentsController::class, 'Notification']);
 });
-
-
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Testing~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 Route::get('/', function () {
     return response()->json(['status' => 'success'], 200);
 });
+//--------------------------------------------------( ANDROID SIDE )---------------------------------------------------//
+
+
+
+
+
+
+
+
+
+
+
+
+//--------------------------------------------------( JUNK )---------------------------------------------------//
 Route::post('/test_fcm', [NotificationController::class, 'TestFirebase']);
 Route::get('/current/session', function () {
     return (new session())->getCurrentSessionWeek() ?? 0;
 });
+Route::prefix('Un-usable')->group(function () {
+    Route::get('/load-file', [TeachersController::class, 'LoadFile']);
+    Route::get('/CanBePromoted', [ExtraKhattaController::class, 'Sample']);
+    Route::post('/send-Notification', [StudentsController::class, 'sendNotification']);
+    Route::post('/update-datacell-image', [DatacellsController::class, 'updateDataCellImage']);
+    Route::post('/add-session', [AdminController::class, 'addSingleSession']);
+    Route::post('/update-admin-image', [AdminController::class, 'updateAdminImage']);
+    Route::post('/EnrollStudent', [DatacellsController::class, 'NewEnrollment']);
+});
+//--------------------------------------------------( JUNK )---------------------------------------------------//

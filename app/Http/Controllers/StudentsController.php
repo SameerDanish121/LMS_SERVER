@@ -93,7 +93,7 @@ class StudentsController extends Controller
                     ->where('type', $type)
                     ->sortByDesc('obtained_points')
                     ->take($creatorLimits['Total'])
-                    ->values(); // Reindex
+                    ->values();
                 $typeResult['Teacher'] = $filtered;
             } else {
                 foreach ($creatorLimits as $creator => $limit) {
@@ -130,7 +130,8 @@ class StudentsController extends Controller
                 if ($teacherOfferedCourse) {
                     $data = [];
                     $teacherOfferedCourseId = $teacherOfferedCourse->id;
-                    $tasks = task::with(['courseContent', 'teacherOfferedCourse.section', 'teacherOfferedCourse.offeredCourse.course'])->where('teacher_offered_course_id', $teacherOfferedCourseId)->get();
+                    $tasks = task::with(['courseContent', 'teacherOfferedCourse.section', 'teacherOfferedCourse.offeredCourse.course'])->where('teacher_offered_course_id', $teacherOfferedCourseId)->where('isMarked', 1)
+                        ->where('due_date', '<', Carbon::now())->get();
                     foreach ($tasks as $task) {
                         $currentDate = now();
                         $taskDetails = [
@@ -573,7 +574,7 @@ class StudentsController extends Controller
                     "Image" => $student->image ? asset($student->image) : null,
                     "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
                     "Task_Info" => StudentManagement::getDueSoonUnsubmittedTasks($student_id),
-                    
+
                 ];
                 if ($rescheduled) {
                     $studentInfo['Notice'] = $Notice;
@@ -924,7 +925,7 @@ class StudentsController extends Controller
                 } else {
                     $timetable = timetable::getTodayTimetableOfTeacherById($teacher->id);
                 }
-               
+
                 $Teacher = [
                     "id" => $teacher->id,
                     "name" => $teacher->name,
@@ -948,7 +949,7 @@ class StudentsController extends Controller
                     'Type' => $role,
                     'TeacherInfo' => $Teacher,
                 ], 200);
-            }  else if ($role == 'JuniorLecturer') {
+            } else if ($role == 'JuniorLecturer') {
                 $jl = juniorlecturer::where('user_id', $user->id)
                     ->with(['user'])
                     ->first();
@@ -962,7 +963,7 @@ class StudentsController extends Controller
                 } else {
                     $timetable = timetable::getTodayTimetableOfJuniorLecturerById($jl->id);
                 }
-             
+
                 $Teacher = [
                     "id" => $jl->id,
                     "name" => $jl->name,

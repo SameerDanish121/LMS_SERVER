@@ -484,9 +484,8 @@ class CourseContentContoller extends Controller
                         ->where('offered_course_id', $offeredCourse->id)
                         ->where('type', $type)
                         ->count();
-                    $title .= '-' . $type . '-' . ($existingCount + 1) . ')';
+                    $title .= '-' . $type . '-' . ($existingCount + 1);
                 }
-                $title = preg_replace('/[^A-Za-z0-9._-]/', '_', $title);
                 if ($request->has('file')) {
                     $file = $request->file;
                 } else {
@@ -496,16 +495,13 @@ class CourseContentContoller extends Controller
                 if (in_array($file->getClientOriginalExtension(), ['pdf', 'doc', 'docx'])) {
                     $directory = $offeredCourse->session->name . '-' . $offeredCourse->session->year . '/CourseContent' . '/' . $offeredCourse->course->description;
                     $filePath = FileHandler::storeFile($title, $directory, $file);
-                    $courseContent = coursecontent::updateOrCreate(
+                    $courseContent = coursecontent::Create(
                         [
                             'week' => $weekNo,
                             'offered_course_id' => $offeredCourse->id,
                             'type' => $type,
-
-                        ],
-                        [
                             'title' => $title,
-                            'content' => $filePath,
+                             'content' => $filePath,
                         ]
                     );
                 } else {

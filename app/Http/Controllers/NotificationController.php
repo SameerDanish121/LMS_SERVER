@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+use App\Events\NotificationEvent;
 use App\Models\FileHandler;
 use App\Models\notification;
 use App\Models\student;
@@ -11,8 +12,110 @@ use Illuminate\Support\Facades\Storage;
 use Kreait\Firebase\Messaging\CloudMessage;
 use Google\Client as GoogleClient;
 use App\Models\user_fcm_tokens;
+use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+
 class NotificationController extends Controller
 {
+
+
+    public function fetchUserNotifications(Request $request)
+    {
+        try {
+            // Step 1: Validate the request
+            $request->validate([
+                'user_id' => 'required|exists:user,id',
+            ]);
+
+            $userId = $request->user_id;
+
+            // Step 2: Define a per-user cache key
+            $cacheKey = "last_notification_fetch_user_$userId";
+
+            // Step 3: Get the last fetch time for this user
+            $lastFetchTime = Cache::get($cacheKey, now()->subDay()); // default 1 day ago
+
+            // Step 4: Get current time
+            $currentTime = now();
+
+            // Step 5: Fetch notifications
+            $notifications = notification::whereBetween('notification_date', [$lastFetchTime, $currentTime])
+                ->where(function ($query) use ($userId) {
+                    $query->where('Brodcast', true)
+                        ->orWhere('TL_receiver_id', $userId);
+                })
+                ->get();
+
+            // Step 6: Update cache with the new fetch time
+            Cache::put($cacheKey, $currentTime, now()->addDays(1)); // optionally set expiry
+
+            // Step 7: Transform notifications
+            $result = $notifications->map(function ($notif) {
+                $url = $notif->url ?? '';
+                $mediaType = (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) ? 'link' : 'image';
+
+                return [
+                    'user_id' => $notif->TL_receiver_id,
+                    'title' => $notif->title,
+                    'description' => $notif->description,
+                    'isBroadcast' => (bool) $notif->Brodcast,
+                    'media_type' => $mediaType,
+                    'media_link' => $url,
+                ];
+            });
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Notifications fetched successfully',
+                'data' => $result,
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $ve) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error',
+                'errors' => $ve->errors(),
+            ], 422);
+
+        } catch (Exception $e) {
+            Log::error('Notification Fetch Error for User ID ' . ($request->user_id ?? 'null') . ': ' . $e->getMessage());
+
+            return response()->json([
+                'status' => false,
+                'message' => 'An error occurred while fetching notifications',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+    public function send(Request $request)
+    {
+        $noti = notification::create($request->all());
+
+        $receiver_id = $noti->TL_receiver_id;
+        $isBroadcast = $noti->Brodcast;
+
+        $cacheKey = 'last_checked_time_' . $receiver_id;
+        $lastChecked = Cache::get($cacheKey, now()->subMinutes(10));
+
+        Cache::put($cacheKey, now(), 86400); // Cache for 1 day
+
+        $freshNotifications = notification::where('notification_date', '>', $lastChecked)
+            ->where(function ($query) use ($receiver_id, $isBroadcast) {
+                $query->where('TL_receiver_id', $receiver_id);
+                if ($isBroadcast) {
+                    $query->orWhere('Brodcast', true);
+                }
+            })
+            ->get();
+
+        broadcast(new NotificationEvent($freshNotifications, $receiver_id, $isBroadcast));
+
+        return response()->json(['message' => 'Notification broadcasted']);
+    }
+
     public function SendNotificationToStudent(Request $request)
     {
         try {
@@ -32,8 +135,8 @@ class NotificationController extends Controller
             if ($request->hasFile('image')) {
                 $imagePath = FileHandler::storeFile(now()->timestamp, 'Notification', $request->file('image'));
                 $imageUrl = $imagePath;
-            }else if($request->has('image')){
-                $imageUrl=$request->image;
+            } else if ($request->has('image')) {
+                $imageUrl = $request->image;
             }
 
             $userId = [];
@@ -80,7 +183,7 @@ class NotificationController extends Controller
 
             return response()->json(['message' => 'Notification sent successfully'], 200);
         } catch (\Exception $e) {
-            \Log::error('SendNotificationToStudent Error: ' . $e->getMessage());
+            Log::error('SendNotificationToStudent Error: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to send notification', 'details' => $e->getMessage()], 500);
         }
     }
@@ -96,7 +199,7 @@ class NotificationController extends Controller
                 ->toArray();
 
             if (empty($tokens)) {
-                \Log::warning("No FCM tokens found for users: " . implode(',', $userIds));
+                Log::warning("No FCM tokens found for users: " . implode(',', $userIds));
                 return;
             }
 
@@ -105,10 +208,10 @@ class NotificationController extends Controller
                 self::sendFCMNotification($fcmToken, $title, $body, $image, $type, $id);
             }
 
-            \Log::info("Notification sent to " . count($tokens) . " tokens.");
+            Log::info("Notification sent to " . count($tokens) . " tokens.");
 
         } catch (\Throwable $e) {
-            \Log::error("sendNotificationToUsers Exception: " . $e->getMessage());
+            Log::error("sendNotificationToUsers Exception: " . $e->getMessage());
         }
     }
     public static function sendBulkFCMNotification(array $fcmTokens, $title, $body, $image = null, $type = null, $id = null)
@@ -124,7 +227,7 @@ class NotificationController extends Controller
             $credentialsFilePath = Storage::path('shhhhhmm.json');
             if (!file_exists($credentialsFilePath)) {
                 // Silent fail (do not break app)
-                \Log::error("Firebase credentials file not found at $credentialsFilePath");
+                Log::error("Firebase credentials file not found at $credentialsFilePath");
                 return;
             }
             $client = new GoogleClient();
@@ -134,7 +237,7 @@ class NotificationController extends Controller
             $token = $client->getAccessToken();
 
             if (empty($token['access_token'])) {
-                \Log::error("Failed to get Firebase access token");
+                Log::error("Failed to get Firebase access token");
                 return;
             }
             $androidNotification = [
@@ -183,16 +286,16 @@ class NotificationController extends Controller
             curl_close($ch);
             // Log errors, do not break flow
             if ($err) {
-                \Log::error("FCM Curl Error: " . $err);
+                Log::error("FCM Curl Error: " . $err);
             } else {
                 $decoded = json_decode($response, true);
                 if (isset($decoded['error'])) {
-                    \Log::error("FCM Error: " . json_encode($decoded['error']));
+                    Log::error("FCM Error: " . json_encode($decoded['error']));
                 }
             }
         } catch (\Throwable $e) {
             // Catch everything without breaking
-            \Log::error("FCM Exception: " . $e->getMessage());
+            Log::error("FCM Exception: " . $e->getMessage());
         }
     }
     public function TestFirebase(Request $request)

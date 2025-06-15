@@ -2,6 +2,7 @@
 namespace App\Http\Controllers;
 use App\Models\datacell;
 use App\Models\grader_task;
+use App\Models\task_consideration;
 use DateTime;
 use Exception;
 use App\Models;
@@ -64,6 +65,306 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 class JuniorLecController extends Controller
 {
+
+    public function getSectionDetails($teacher_offered_course_id)
+    {
+        $teacherOfferedCourse = teacher_offered_courses::with(['section', 'offeredCourse.course', 'offeredCourse.session'])->find($teacher_offered_course_id);
+
+        if (!$teacherOfferedCourse) {
+            return response()->json([
+                'error' => 'Teacher offered course not found.',
+            ], 404);
+        }
+        $offeredCourseId = $teacherOfferedCourse->offered_course_id;
+        $sectionId = $teacherOfferedCourse->section_id;
+        $studentCourses = student_offered_courses::where('offered_course_id', $offeredCourseId)
+            ->where('section_id', $sectionId)
+            ->with(['student'])
+            ->get();
+
+        if ($studentCourses->isEmpty()) {
+            return response()->json([
+                'error' => 'No students found for the given teacher offered course.',
+            ], 404);
+        }
+        $studentsData = $studentCourses->map(function ($studentCourse) use ($teacher_offered_course_id) {
+            $student = $studentCourse->student;
+            if (!$student) {
+                return null;
+            }
+
+            return [
+                "student_id" => $student->id,
+                "name" => $student->name,
+                "RegNo" => $student->RegNo,
+                "CGPA" => $student->cgpa,
+                "Gender" => $student->gender,
+                "Guardian" => $student->guardian,
+                "username" => $student->user->username,
+                "email" => $student->user->email,
+                "InTake" => (new session())->getSessionNameByID($student->session_id),
+                "Program" => $student->program->name,
+                "Section" => (new section())->getNameByID($student->section_id),
+                "Image" => $student->image ? asset($student->image) : null,
+                'attendance' => self::getStudentAttendancePercentageInCourse($student->id, $teacher_offered_course_id),
+                'task' => self::getTaskProgressWithConsideration($student->id, $teacher_offered_course_id),
+                'Mid_Exam' => self::getExamProgressSummary($student->id, $teacher_offered_course_id, 'Mid'),
+                'Final_Exam' => self::getExamProgressSummary($student->id, $teacher_offered_course_id, 'Final'),
+            ];
+        })->filter();
+        return response()->json([
+            'success' => true,
+            'teacher_offered_course_id' => $teacher_offered_course_id,
+            'Session Name' => ($teacherOfferedCourse->offeredCourse->session->name . '-' . $teacherOfferedCourse->offeredCourse->session->year) ?? null,
+            'Course Name' => $teacherOfferedCourse->offeredCourse->course->name,
+            'Section Name' => (new section())->getNameByID($teacherOfferedCourse->section->id),
+            'students_count' => $studentCourses->count(),
+            'students' => $studentsData,
+        ], 200);
+    }
+
+    public static function getExamProgressSummary($studentId, $teacherOfferedCourseId, $type)
+    {
+        try {
+            // Get teacher_offered_course and find its offered_course_id
+            $teacherCourse = teacher_offered_courses::find($teacherOfferedCourseId);
+
+            if (!$teacherCourse || !$teacherCourse->offered_course_id) {
+                return null;
+            }
+
+            $offeredCourseId = $teacherCourse->offered_course_id;
+
+            // Fetch exams of specific type
+            $exams = exam::where('offered_course_id', $offeredCourseId)
+                ->where('type', $type)
+                ->with('questions')
+                ->get();
+
+            if ($exams->isEmpty()) {
+                return null;
+            }
+
+            $totalObtained = 0;
+            $totalMarks = 0;
+            $solidMarks = 0;
+
+            foreach ($exams as $exam) {
+                $examObtained = 0;
+
+                foreach ($exam->questions as $question) {
+                    $result = student_exam_result::where('question_id', $question->id)
+                        ->where('student_id', $studentId)
+                        ->where('exam_id', $exam->id)
+                        ->first();
+
+                    if ($result) {
+                        $examObtained += $result->obtained_marks;
+                    }
+                }
+
+                $totalObtained += $examObtained;
+                $totalMarks += $exam->total_marks;
+                $solidMarks += $exam->Solid_marks;
+            }
+
+            $solidEquivalent = ($totalMarks > 0 && $solidMarks > 0)
+                ? round(($totalObtained / $totalMarks) * $solidMarks, 2)
+                : 0;
+
+            $percentage = ($totalMarks > 0)
+                ? round(($totalObtained / $totalMarks) * 100, 2)
+                : 0;
+
+            return [
+                'solid_marks' => $solidMarks,
+                'solid_equivalent' => $solidEquivalent,
+                'percentage' => $percentage,
+            ];
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+
+    public static function getStudentAttendancePercentageInCourse($studentId, $teacherOfferedCourseId)
+    {
+        if (!$studentId || !$teacherOfferedCourseId) {
+            return [
+                'total_classes_conducted' => 0,
+                'total_present' => 0,
+                'total_absent' => 0,
+                'percentage' => 0.00
+            ];
+        }
+        try {
+            $totalPresent = attendance::where('student_id', $studentId)
+                ->where('teacher_offered_course_id', $teacherOfferedCourseId)
+                ->where('status', 'p')
+                ->count();
+            $totalClasses = attendance::where('teacher_offered_course_id', $teacherOfferedCourseId)
+                ->distinct('date_time')
+                ->count('date_time');
+
+            $totalAbsent = $totalClasses - $totalPresent;
+
+            $percentage = $totalClasses > 0
+                ? round(($totalPresent / $totalClasses) * 100, 2)
+                : 0.00;
+
+            return [
+                'total_classes_conducted' => $totalClasses,
+                'total_present' => $totalPresent,
+                'total_absent' => $totalAbsent,
+                'percentage' => $percentage
+            ];
+
+        } catch (Exception $e) {
+            return [
+                'total_classes_conducted' => 0,
+                'total_present' => 0,
+                'total_absent' => 0,
+                'percentage' => 0.00
+            ];
+        }
+    }
+    public static function OnlyConsidered($task, $settings)
+    {
+        $tasksCollection = collect($task);
+        $finalResult = [];
+
+        foreach ($settings as $type => $creatorLimits) {
+            $typeResult = [];
+            if (($creatorLimits['Junior Lecturer'] ?? null) == null) {
+                $filtered = $tasksCollection
+                    ->where('type', $type)
+                    ->sortByDesc('obtained_points')
+                    ->take($creatorLimits['Total'])
+                    ->values();
+                $typeResult['Teacher'] = $filtered;
+            } else {
+                foreach ($creatorLimits as $creator => $limit) {
+                    $filtered = $tasksCollection
+                        ->where('type', $type)
+                        ->where('created_by', $creator)
+                        ->sortByDesc('obtained_points')
+                        ->take($limit)
+                        ->values();
+                    $typeResult[$creator] = $filtered;
+                }
+            }
+
+
+            $finalResult[$type] = $typeResult;
+        }
+
+        return $finalResult;
+    }
+    public static function getTaskProgressWithConsideration($studentId, $teacherOfferedCourseId)
+    {
+        try {
+            $tasks = task::with('courseContent')
+                ->where('teacher_offered_course_id', $teacherOfferedCourseId)
+                ->where('isMarked', 1)
+                ->where('due_date', '<', Carbon::now())
+                ->get();
+
+            $allTasks = [];
+            $totalPoints = 0;
+            $totalObtained = 0;
+
+            foreach ($tasks as $task) {
+                $taskResult = student_task_result::where('Task_id', $task->id)
+                    ->where('Student_id', $studentId)
+                    ->first();
+
+                if ($taskResult) {
+                    $obtained = $taskResult->ObtainedMarks ?? 0;
+
+                    $taskDetail = [
+                        'id' => $task->id,
+                        'type' => $task->type,
+                        'points' => $task->points,
+                        'obtained_points' => $obtained,
+                        'created_by' => $task->CreatedBy
+                    ];
+
+                    $allTasks[] = $taskDetail;
+                    $totalPoints += $task->points;
+                    $totalObtained += $obtained;
+                } else {
+
+
+                    $taskDetail = [
+                        'id' => $task->id,
+                        'type' => $task->type,
+                        'points' => $task->points,
+                        'obtained_points' => 0,
+                        'created_by' => $task->CreatedBy
+                    ];
+
+                    $allTasks[] = $taskDetail;
+                    $totalPoints += $task->points;
+
+                }
+            }
+            $normalPercentage = $totalPoints > 0 ? round(($totalObtained / $totalPoints) * 100, 2) : 0.00;
+            $teacherCourse = teacher_offered_courses::find($teacherOfferedCourseId);
+            $considerationSummary = $teacherCourse
+                ? task_consideration::getConsiderationSummary($teacherOfferedCourseId, $teacherCourse->offeredCourse->lab)
+                : [];
+            $isEmptyPolicy = empty(array_filter($considerationSummary, function ($v) {
+                return !empty($v);
+            }));
+
+            if ($isEmptyPolicy) {
+                return [
+                    'total_tasks_conducted' => count($allTasks),
+                    'total_points' => $totalPoints,
+                    'total_marks_obtained' => $totalObtained,
+                    'percentage' => $normalPercentage,
+                    'total_marks_by_consideration_policy' => $totalPoints,
+                    'total_obtained_by_consideration' => $totalObtained,
+                    'percentage_by_consideration' => $normalPercentage,
+                ];
+            }
+            $considered = self::OnlyConsidered($allTasks, $considerationSummary);
+            $flattenedConsidered = [];
+            foreach ($considered as $typeGroup) {
+                foreach ($typeGroup as $creator => $tasksGroup) {
+                    foreach ($tasksGroup as $task) {
+                        $flattenedConsidered[] = $task;
+                    }
+                }
+            }
+
+            $consideredTotal = array_sum(array_column($flattenedConsidered, 'points'));
+            $consideredObtained = array_sum(array_column($flattenedConsidered, 'obtained_points'));
+            $consideredPercentage = $consideredTotal > 0
+                ? round(($consideredObtained / $consideredTotal) * 100, 2)
+                : 0.00;
+
+            return [
+                'total_tasks_conducted' => count($allTasks),
+                'total_points' => $totalPoints,
+                'total_marks_obtained' => $totalObtained,
+                'percentage' => $normalPercentage,
+                'total_marks_by_consideration_policy' => $consideredTotal,
+                'total_obtained_by_consideration' => $consideredObtained,
+                'percentage_by_consideration' => $consideredPercentage,
+            ];
+        } catch (Exception $e) {
+            return [
+                'total_tasks_conducted' => 0,
+                'total_points' => 0,
+                'total_marks_obtained' => 0,
+                'percentage' => 0.00,
+                'total_marks_by_consideration_policy' => 0,
+                'total_obtained_by_consideration' => 0,
+                'percentage_by_consideration' => 0.00,
+            ];
+        }
+    }
+
     public function YourCurrentSessionCourses(Request $request)
     {
         try {
@@ -104,23 +405,23 @@ class JuniorLecController extends Controller
                 'due_date' => 'required|date_format:Y-m-d H:i:s|after:start_date',
                 'teacher_offered_course_id' => 'required|exists:teacher_offered_courses,id'
             ]);
-    
+
             $teacher_offered_course_id = $validatedData['teacher_offered_course_id'];
             $points = $validatedData['points'];
             $startDate = $validatedData['start_date'];
             $dueDate = $validatedData['due_date'];
             $coursecontent_id = $validatedData['coursecontent_id'];
-    
+
             // Fetch course content type and title
             $course_content = CourseContent::findOrFail($coursecontent_id);
             $type = $course_content->type;
             $title = $course_content->title;
-    
+
             // Generate unique task title
             $taskNo = Action::getTaskCount($teacher_offered_course_id, $type);
             $taskNo = ($taskNo > 0 && $taskNo < 10) ? "0" . $taskNo : $taskNo;
             $filename = $title . '-' . $type . $taskNo;
-            
+
             $taskData = [
                 'title' => $filename,
                 'type' => $type,
@@ -131,12 +432,12 @@ class JuniorLecController extends Controller
                 'coursecontent_id' => $coursecontent_id,
                 'teacher_offered_course_id' => $teacher_offered_course_id
             ];
-    
+
             // Check if a task with the same teacher_offered_course_id & coursecontent_id exists
             $task = Task::where('teacher_offered_course_id', $teacher_offered_course_id)
                 ->where('coursecontent_id', $coursecontent_id)
                 ->first();
-    
+
             if ($task) {
                 $task->update($taskData);
                 $response = ['status' => 'Task Already Allocated! Updated Successfully', 'task' => $task];
@@ -144,19 +445,19 @@ class JuniorLecController extends Controller
                 $task = Task::create($taskData);
                 $response = ['status' => 'Task Allocated Successfully', 'task' => $task];
             }
-    
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Task processed successfully.',
                 'data' => $response
             ], 200);
-    
+
         } catch (ValidationException $e) {
             // Convert errors array to a single string message
             $errorMessage = implode(' ', array_map(function ($error) {
                 return implode(' ', $error);
             }, $e->errors()));
-    
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Validation failed.',
@@ -178,9 +479,9 @@ class JuniorLecController extends Controller
             $assignments = teacher_offered_courses::where('teacher_id', $teacher_id)
                 ->with(['offeredCourse.course', 'section'])
                 ->get();
-                $assignments = teacher_offered_courses::whereHas('teacherJuniorLecturer', function ($query) use ($teacher_id) {
-                    $query->where('juniorlecturer_id', $teacher_id);
-                })
+            $assignments = teacher_offered_courses::whereHas('teacherJuniorLecturer', function ($query) use ($teacher_id) {
+                $query->where('juniorlecturer_id', $teacher_id);
+            })
                 ->with([
                     'offeredCourse.course',
                     'offeredCourse.session',
@@ -297,15 +598,15 @@ class JuniorLecController extends Controller
             foreach ($uniqueCourses as $course) {
                 $courseId = $course['offered_course_id'];
                 $coursename = $course['course_name'];
-                $course_lab=$course['course_lab'];
+                $course_lab = $course['course_lab'];
                 $AllSection = collect($ActiveCourses)->where('offered_course_id', $courseId)->toArray();
                 $AllTeacherOfferedCourseIds = collect($AllSection)->pluck('teacher_offered_course_id')->toArray();
                 $courseContents[] = [
                     'offered_course_id' => $courseId,
                     'course_name' => $coursename,
-                    'course_lab'=>$course_lab,
+                    'course_lab' => $course_lab,
                     'sections' => $AllSection,
-                    'task_details' => self::TaskDetailsOfASubject($courseId,$AllTeacherOfferedCourseIds)
+                    'task_details' => self::TaskDetailsOfASubject($courseId, $AllTeacherOfferedCourseIds)
                 ];
             }
             $courseContents = collect($courseContents)->groupBy('offered_course_id')->toArray();
@@ -345,32 +646,36 @@ class JuniorLecController extends Controller
                     $type = $task->type;
                     $content = asset($task->content);
                 }
-    
+
                 $unassigned_to = [];
-                $assigned_to=[];
+                $assigned_to = [];
                 foreach ($All_teacher_offered_course_ids as $teacher_offered_course_id) {
-                  
-                    $section=(new section())->getNameByID(  teacher_offered_courses::find($teacher_offered_course_id)->section_id);
-                    if(!(task::where('coursecontent_id',$task->id)->where('teacher_offered_course_id',$teacher_offered_course_id)->exists() )){
-                        $unassigned_to[]=['teacher_offered_course_id'=> $teacher_offered_course_id,
-                          'section_name'=>$section];
-                    }else{
-                    $assigned_to[]=['teacher_offered_course_id'=> $teacher_offered_course_id,
-                          'section_name'=>$section];
+
+                    $section = (new section())->getNameByID(teacher_offered_courses::find($teacher_offered_course_id)->section_id);
+                    if (!(task::where('coursecontent_id', $task->id)->where('teacher_offered_course_id', $teacher_offered_course_id)->exists())) {
+                        $unassigned_to[] = [
+                            'teacher_offered_course_id' => $teacher_offered_course_id,
+                            'section_name' => $section
+                        ];
+                    } else {
+                        $assigned_to[] = [
+                            'teacher_offered_course_id' => $teacher_offered_course_id,
+                            'section_name' => $section
+                        ];
                     }
                 }
                 return [
                     'id' => $task->id,
                     'type' => $type,
                     'title' => $task->title,
-                    'week'=>$task->week,
+                    'week' => $task->week,
                     'content' => $content,
                     'un_assigned_to' => $unassigned_to,
-                    'assigned_to'=>$assigned_to
+                    'assigned_to' => $assigned_to
                 ];
             });
-            $data=collect($task_with_data)->groupBy('week')->toArray();
-             ksort($data);
+            $data = collect($task_with_data)->groupBy('week')->toArray();
+            ksort($data);
             return $data;
         } catch (ValidationException $e) {
             return [];
@@ -586,7 +891,6 @@ class JuniorLecController extends Controller
                 ->get()
                 ->map(function ($item) {
                     return [
-                        // 'day' => $item->dayslot->day,
                         'coursename' => $item->course->name,
                         'description' => $item->course->description,
                         'course_id' => $item->course->id,
@@ -791,7 +1095,7 @@ class JuniorLecController extends Controller
                     }
 
                 } else if ($note->sender === 'DataCell') {
-                    $Datacell =datacell::where('user_id', $note->TL_sender_id)->first();
+                    $Datacell = datacell::where('user_id', $note->TL_sender_id)->first();
                     if ($Datacell) {
                         $senderName = $Datacell->name ?? 'N/A';
                         $image = $Datacell->image ? asset($Datacell->image) : null;
@@ -934,10 +1238,10 @@ class JuniorLecController extends Controller
             $currentSessionId = (new session())->getCurrentSessionId();
 
             // Fetch data with necessary relationships
-           
-           $assignments = teacher_offered_courses::whereHas('teacherJuniorLecturer', function ($query) use ($teacher_id) {
-                    $query->where('juniorlecturer_id', $teacher_id);
-                })
+
+            $assignments = teacher_offered_courses::whereHas('teacherJuniorLecturer', function ($query) use ($teacher_id) {
+                $query->where('juniorlecturer_id', $teacher_id);
+            })
                 ->with([
                     'offeredCourse.course',
                     'offeredCourse.session',
@@ -971,7 +1275,7 @@ class JuniorLecController extends Controller
                     'program_name' => $program ? $program->name : 'N/A',
                     'offered_course_id' => $offeredCourse->id,
                     'teacher_offered_course_id' => $assignment->id,
-                    
+
                 ];
                 if ($course->lab) {
                     $teacherJuniorLecturer = teacher_juniorlecturer::where('teacher_offered_course_id', $assignment->id)
@@ -984,7 +1288,7 @@ class JuniorLecController extends Controller
                         $courseDetails['junior_name'] = 'N/A';
                         $courseDetails['junior_image'] = null;
                     }
-                }  
+                }
 
                 if ($offeredCourse->session_id == $currentSessionId) {
                     $activeCourses[] = $courseDetails;
@@ -1005,7 +1309,7 @@ class JuniorLecController extends Controller
             ], 500);
         }
     }
-    
+
     public function YourCourses(Request $request)
     {
         try {
@@ -1532,7 +1836,7 @@ class JuniorLecController extends Controller
                     'attendance_id' => $item->attendance->id ?? null,
                     'teacher_offered_course' => $item->attendance->teacherOfferedCourse->id ?? null,
                 ];
-            
+
             });
             return response()->json([
                 'success' => 'Fetched Successfully!',
@@ -1902,44 +2206,44 @@ class JuniorLecController extends Controller
     public function addAttendanceSeatingPlan(Request $request)
     {
         try {
-        $validated = $request->validate([
-            'teacher_offered_course_id' => 'required|integer',
-            'students' => 'required|array',
-            'students.*.student_id' => 'required|integer', // Each student must have an ID
-            'students.*.seatNo' => 'required|integer', // Each student must have a seat number
-        ]);
-        $attendanceType = 'Lab';
-        $teacherOfferedCourseId = $validated['teacher_offered_course_id'];
-        Attendance_Sheet_Sequence::where('teacher_offered_course_id', $teacherOfferedCourseId)
-            ->where('For', $attendanceType)
-            ->delete();
-        $studentData = $validated['students'];
-        foreach ($studentData as $data) {
-            Attendance_Sheet_Sequence::create([
-                'teacher_offered_course_id' => $teacherOfferedCourseId,
-                'student_id' => $data['student_id'],
-                'For' => $attendanceType,
-                'SeatNumber' => $data['seatNo'],
+            $validated = $request->validate([
+                'teacher_offered_course_id' => 'required|integer',
+                'students' => 'required|array',
+                'students.*.student_id' => 'required|integer', // Each student must have an ID
+                'students.*.seatNo' => 'required|integer', // Each student must have a seat number
             ]);
-        }
-        return response()->json([
-            'success' => true,
-            'message' => 'Attendance seating plan updated successfully.',
-        ], 200);
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Validation failed.',
-            'errors' => $e->errors()
-        ], 422);
+            $attendanceType = 'Lab';
+            $teacherOfferedCourseId = $validated['teacher_offered_course_id'];
+            Attendance_Sheet_Sequence::where('teacher_offered_course_id', $teacherOfferedCourseId)
+                ->where('For', $attendanceType)
+                ->delete();
+            $studentData = $validated['students'];
+            foreach ($studentData as $data) {
+                Attendance_Sheet_Sequence::create([
+                    'teacher_offered_course_id' => $teacherOfferedCourseId,
+                    'student_id' => $data['student_id'],
+                    'For' => $attendanceType,
+                    'SeatNumber' => $data['seatNo'],
+                ]);
+            }
+            return response()->json([
+                'success' => true,
+                'message' => 'Attendance seating plan updated successfully.',
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $e->errors()
+            ], 422);
 
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'An error occurred while updating the seating plan.',
-            'error' => $e->getMessage(),
-        ], 500);
-    }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while updating the seating plan.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function updateJuniorLecturerPassword(Request $request)
