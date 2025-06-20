@@ -1,8 +1,8 @@
 <?php
 
 namespace App\Http\Controllers;
-
 use App\Models\datacell;
+use App\Models\Hod;
 use Illuminate\Http\Request;
 use App\Models\Action;
 use App\Models\coursecontent;
@@ -46,6 +46,8 @@ use App\Models\timetable;
 use App\Models\User;
 use DateTime;
 use App\Models;
+use App\Models\admin;
+use App\Models\Director;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
 use App\Models\session;
@@ -55,6 +57,567 @@ use function PHPUnit\Framework\isEmpty;
 use Illuminate\Support\Facades\Storage;
 class DatacellsController extends Controller
 {
+    public function deleteUserRole(Request $request)
+    {
+        try {
+            $request->validate([
+                'type' => 'required|string|in:Admin,Datacell,HOD,Director',
+                'id' => 'required|integer',
+            ]);
+
+            $type = $request->input('type');
+            $id = $request->input('id');
+            $modelMap = [
+                'Admin' => Admin::class,
+                'Datacell' => Datacell::class,
+                'HOD' => Hod::class,
+                'Director' => Director::class,
+            ];
+
+            if (!isset($modelMap[$type])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid user role type.'
+                ], 422);
+            }
+
+            $model = $modelMap[$type];
+            $record = $model::findOrFail($id);
+
+            // Wrap in transaction for safe delete
+            DB::beginTransaction();
+
+            $userId = $record->user_id;
+
+            // Delete notifications sent by this user
+            Notification::where('TL_sender_id', $userId)->delete();
+
+            // Delete role-specific record
+            $record->delete();
+
+            // Delete the user record
+            User::where('id', $userId)->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "{$type} deleted successfully with user and related notifications."
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "{$type} with given ID not found."
+            ], 404);
+
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred during deletion.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function updateUserRole(Request $request)
+    {
+        try {
+            $request->validate([
+                'type' => 'required|string|in:Admin,Datacell,HOD,Director',
+                'id' => 'required|integer',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            ]);
+
+            $type = $request->input('type');
+            $id = $request->input('id');
+
+            // Resolve model class
+            $modelMap = [
+                'Admin' => Admin::class,
+                'Datacell' => Datacell::class,
+                'HOD' => Hod::class,
+                'Director' => Director::class,
+            ];
+
+            if (!isset($modelMap[$type])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid type provided.'
+                ], 422);
+            }
+
+            $modelClass = $modelMap[$type];
+            $record = $modelClass::findOrFail($id);
+
+            $updatable = [];
+
+            foreach ($request->except(['type', 'id', 'program_name', 'image']) as $key => $value) {
+                $updatable[$key] = $value;
+            }
+
+            // Special case: HOD with program_name
+            if ($type === 'HOD' && $request->has('program_name')) {
+                $programName = trim($request->input('program_name'));
+                $program = Program::where('name', $programName)->first();
+
+                if (!$program) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => "Program with short form '{$programName}' not found."
+                    ], 404);
+                }
+
+                $updatable['program_id'] = $program->id;
+                $updatable['department'] = $programName;
+            }
+
+            // Handle image upload if present
+            if ($request->hasFile('image')) {
+                $image = $request->file('image');
+                $directory = 'Images/' . $type;
+                $storedPath = FileHandler::storeFile($record->user_id, $directory, $image);
+                $updatable['image'] = $storedPath;
+            }
+
+            // Update only provided fields
+            $record->update($updatable);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "{$type} updated successfully.",
+                'updated_fields' => array_keys($updatable)
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "{$type} with given ID not found."
+            ], 404);
+
+        } catch (Exception $e) {
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred.',
+                'error' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null, // Shows stack trace only in debug
+            ], 500);
+        }
+    }
+
+    public function getCoreUsers()
+    {
+        try {
+            $transformUsers = function ($collection, $role) {
+                $result = [];
+
+                foreach ($collection as $user) {
+                    $result[] = [
+                        'id' => $user->id,
+                        'name' => $user->name ?? null,
+                        'phone_number' => $user->phone_number ?? null,
+                        'Designation' => $user->designation ?? $user->Designation ?? null,
+                        'department' => $user->department ?? null, // only for HOD
+                        'email' => optional($user->user)->email,
+                        'image' => $user->image ? asset($user->image) : null,
+                    ];
+                }
+                return $result;
+            };
+
+            $data = [
+                'Datacell' => $transformUsers(Datacell::with('user')->get(), 'Datacell'),
+                'Admin' => $transformUsers(admin::with('user')->get(), 'Admin'),
+                'HOD' => $transformUsers(Hod::with('user')->get(), 'HOD'),
+                'Director' => $transformUsers(Director::with('user')->get(), 'Director'),
+            ];
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Core users fetched successfully.',
+                'data' => $data
+            ], 200);
+
+        } catch (\Exception $e) {
+
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred while fetching core users.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function UpdateJuniorLecturer(Request $request)
+    {
+        try {
+            $request->validate([
+                'junior_lecturer_id' => 'required|integer|exists:juniorlecturer,id',
+                'name' => 'nullable|string',
+                'date_of_birth' => 'nullable|date',
+                'gender' => 'nullable|string',
+                'cnic' => 'nullable|string',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
+            ]);
+
+            $jl = JuniorLecturer::findOrFail($request->input('junior_lecturer_id'));
+
+            $updatedData = [];
+
+            if ($request->has('name')) {
+                $updatedData['name'] = trim($request->input('name'));
+            }
+
+            if ($request->has('date_of_birth')) {
+                $formattedDOB = (new DateTime($request->input('date_of_birth')))->format('Y-m-d');
+                $updatedData['date_of_birth'] = $formattedDOB;
+            }
+
+            if ($request->has('gender')) {
+                $updatedData['gender'] = $request->input('gender');
+            }
+
+            if ($request->has('cnic')) {
+                $cnic = $request->input('cnic');
+                $existing = JuniorLecturer::where('cnic', $cnic)
+                    ->where('id', '!=', $jl->id)
+                    ->exists();
+
+                if ($existing) {
+                    return response()->json([
+                        'status' => 'failed',
+                        'message' => "Another junior lecturer with CNIC: {$cnic} already exists."
+                    ], 409);
+                }
+
+                $updatedData['cnic'] = $cnic;
+            }
+            // Handle image upload
+            if ($request->hasFile('image')) {
+                $image = $request->file('image');
+                $directory = 'Images/JuniorLecturer';
+                $storedFilePath = FileHandler::storeFile($jl->user_id, $directory, $image);
+                $updatedData['image'] = $storedFilePath;
+            }
+
+            $jl->update($updatedData);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Junior Lecturer information updated successfully.',
+                'updated_fields' => array_keys($updatedData)
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Junior Lecturer not found'
+            ], 404);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function UpdateTeacher(Request $request)
+    {
+        try {
+            $request->validate([
+                'teacher_id' => 'required|integer|exists:teacher,id',
+                'name' => 'nullable|string',
+                'date_of_birth' => 'nullable|date',
+                'gender' => 'nullable|string',
+                'cnic' => 'nullable',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            ]);
+
+            $teacher = Teacher::findOrFail($request->input('teacher_id'));
+
+            $updatedData = [];
+
+            if ($request->has('name')) {
+                $updatedData['name'] = trim($request->input('name'));
+            }
+
+            if ($request->has('date_of_birth')) {
+                $formattedDOB = (new DateTime($request->input('date_of_birth')))->format('Y-m-d');
+                $updatedData['date_of_birth'] = $formattedDOB;
+            }
+
+            if ($request->has('gender')) {
+                $updatedData['gender'] = $request->input('gender');
+            }
+
+            if ($request->has('cnic')) {
+                // Check for duplicate CNIC
+                $cnic = $request->input('cnic');
+                $existing = Teacher::where('cnic', $cnic)
+                    ->where('id', '!=', $teacher->id)
+                    ->exists();
+                if ($existing) {
+                    return response()->json([
+                        'status' => 'failed',
+                        'message' => "Another teacher with CNIC: {$cnic} already exists."
+                    ], 409);
+                }
+
+                $updatedData['cnic'] = $cnic;
+            }
+            // Handle image upload
+            if ($request->hasFile('image')) {
+                $image = $request->file('image');
+                $directory = 'Images/Teacher';
+                $storedFilePath = FileHandler::storeFile($teacher->user_id, $directory, $image);
+                $updatedData['image'] = $storedFilePath;
+            }
+
+            // Apply updates
+            $teacher->update($updatedData);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Teacher information updated successfully.",
+                'updated_fields' => array_keys($updatedData),
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Teacher not found'
+            ], 404);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred',
+                'error' => $e->getMessage(), // Show message
+                'line' => $e->getLine(),     // Optional: Line number
+                'file' => $e->getFile(),     // Optional: File location
+            ], 500);
+        }
+    }
+
+    public function promoteStudents(Request $request)
+    {
+        // ✅ Step 1: Validate input
+        $validator = Validator::make($request->all(), [
+            'semester' => 'required|integer|min:1|max:11',
+            'cgpa_criteria' => 'required|numeric|min:0|max:4.0',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $semester = $request->semester;
+        $cgpaCriteria = $request->cgpa_criteria;
+
+        try {
+            // ✅ Step 2: Find section IDs in the given semester
+            $sections = Section::where('semester', $semester)->pluck('id');
+
+            if ($sections->isEmpty()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'No sections found for the specified semester.',
+                ], 404);
+            }
+
+            // ✅ Step 3: Fetch students in those sections
+            $students = student::whereIn('section_id', $sections)->with('section')->get();
+
+            if ($students->isEmpty()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'No students found in the specified semester.',
+                ], 404);
+            }
+
+            // ✅ Step 4: Promotion logic
+            $promoted = 0;
+            $dropped = 0;
+            $responseList = [];
+
+            foreach ($students as $stu) {
+                $currentSection = $stu->section;
+
+                // Check if section relation is loaded and valid
+                if (!$currentSection) {
+                    $dropped++;
+                    $responseList[] = [
+                        'RegNo' => $stu->RegNo,
+                        'Name' => $stu->name,
+                        'Previous Semester' => 'Unknown',
+                        'New Semester' => 'Unknown',
+                        'Promotion Status' => 'Dropped (Missing Section)',
+                        'CGPA' => $stu->cgpa
+                    ];
+                    continue;
+                }
+
+                $currentSemester = $currentSection->semester;
+                $program = program::where('name', $currentSection->program)->first();
+                $programId = $program->id;
+                $nextSemester = $currentSemester + 1;
+                $newSemester = $currentSemester;
+                $status = 'Dropped';
+
+                if ($stu->cgpa >= $cgpaCriteria) {
+                    $nextSection = Section::where('program', $currentSection->program)
+                        ->where('semester', $nextSemester)
+                        ->first();
+
+                    if (!$nextSection) {
+                        $nextSection = Section::create([
+                            'program' => $currentSection->program,
+                            'semester' => $nextSemester,
+                            'group' => $currentSection->group ?? 'A',
+                            'status' => 'active'
+                        ]);
+                    }
+
+                    // ✅ Update student
+                    $stu->section_id = $nextSection->id;
+                    $stu->save();
+
+                    $status = 'Promoted';
+                    $newSemester = $nextSemester;
+                    $promoted++;
+                } else {
+                    $dropped++;
+                }
+
+                $responseList[] = [
+                    'RegNo' => $stu->RegNo,
+                    'Name' => $stu->name,
+                    'Previous Semester' => $currentSemester,
+                    'New Semester' => $newSemester,
+                    'Promotion Status' => $status,
+                    'CGPA' => $stu->cgpa
+                ];
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => "Out of {$students->count()} students, {$promoted} were promoted and {$dropped} dropped.",
+                'data' => $responseList
+            ], 200);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong while processing promotions.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function updateStudent(Request $request, $id)
+    {
+        $student = student::find($id);
+
+        if (!$student) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Student not found.'
+            ], 404);
+        }
+
+        // Validate inputs
+        $validator = Validator::make($request->all(), [
+            'RegNo' => 'nullable|string|max:20|unique:student,RegNo,' . $id,
+            'name' => 'nullable|string|max:100',
+            'cgpa' => 'nullable|numeric|between:0,4.00',
+            'gender' => 'nullable|in:Male,Female,Other',
+            'date_of_birth' => 'nullable|date',
+            'guardian' => 'nullable|string|max:100',
+            'section_id' => 'nullable|integer|exists:section,id',
+            'session_id' => 'nullable|integer|exists:session,id',
+            'status' => 'nullable|in:Graduate,UnderGraduate,Freeze',
+            'program_name' => 'nullable|string|exists:program,name',
+            'image' => 'nullable|file|image|mimes:jpg,jpeg,png|max:2048'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+        $student->fill($request->only([
+            'RegNo',
+            'name',
+            'cgpa',
+            'gender',
+            'date_of_birth',
+            'guardian',
+            'section_id',
+            'session_id',
+            'status'
+        ]));
+        if ($request->filled('program_name')) {
+            $program = Program::where('name', $request->program_name)->first();
+            if (!$program) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Program not found.'
+                ], 404);
+            }
+            $student->program_id = $program->id;
+        }
+        if ($request->hasFile('image')) {
+            $regNo = $request->input('RegNo', $student->RegNo);
+            $imagePath = Action::storeFile($request->file('image'), 'Images/Student', $regNo);
+            $student->image = $imagePath;
+        }
+        $student->save();
+        return response()->json([
+            'status' => true,
+            'message' => 'Student updated successfully.',
+            'data' => $student
+        ], 200);
+    }
+
+
     public function updateDatacellInfo(Request $request, $hod_id)
     {
         try {

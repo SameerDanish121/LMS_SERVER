@@ -69,7 +69,6 @@ class CourseContentContoller extends Controller
             ], 500);
         }
     }
-
     public static function getCourseContentWithTopics($offered_course_id)
     {
         $courseContents = coursecontent::where('offered_course_id', $offered_course_id)->get();

@@ -12,9 +12,6 @@ use Illuminate\Support\Facades\DB;
 
 class Action extends Model
 {
-
-
-
     public static function EligibleToPromote($student_id)
     {
         $student = student::find($student_id);
@@ -459,11 +456,159 @@ class Action extends Model
         );
         return $Question_details;
     }
+    public static function getAllTeachersTopicStatusByOfferedCourse($offered_course_id)
+    {
+        try {
+            $offered_course = offered_courses::find($offered_course_id);
+            $offered_course_id=$offered_course->id;
+            $allTeacherCourses = teacher_offered_courses::with('teacher')
+                ->where('offered_course_id', $offered_course_id)
+                ->get();
+ 
+            $finalResult = [];
+
+            foreach ($allTeacherCourses as $teacherCourse) {
+                $section_name = (new section())->getNameByID($teacherCourse->section_id);
+                $teacherId = $teacherCourse->teacher->id ?? null;
+                $teacherName = $teacherCourse->teacher->name ?? 'Unknown';
+                $toc_id = $teacherCourse->id;
+
+                $courseContents = coursecontent::where('offered_course_id', $offered_course_id)->get();
+                $result = [];
+
+                foreach ($courseContents as $courseContent) {
+                    $week = $courseContent->week;
+                    if (!isset($result[$week])) {
+                        $result[$week] = [];
+                    }
+
+                    if ($courseContent->type === 'Notes') {
+                        $courseContentTopics = coursecontent_topic::where('coursecontent_id', $courseContent->id)->get();
+                        $topics = [];
+
+                        foreach ($courseContentTopics as $courseContentTopic) {
+                            $topic = topic::find($courseContentTopic->topic_id);
+                            if ($topic) {
+                                $status = t_coursecontent_topic_status::where('coursecontent_id', $courseContent->id)
+                                    ->where('topic_id', $topic->id)
+                                    ->where('teacher_offered_courses_id', $toc_id)
+                                    ->first();
+
+                                $stat = 'Not-Covered';
+                                if ($status) {
+                                    $stat = $status->Status == 1 ? 'Covered' : 'Not-Covered';
+                                } else {
+                                    DB::table('t_coursecontent_topic_status')->insert([
+                                        'coursecontent_id' => $courseContent->id,
+                                        'topic_id' => $topic->id,
+                                        'teacher_offered_courses_id' => $toc_id,
+                                        'Status' => 0
+                                    ]);
+                                }
+
+                                $topics[] = [
+                                    'topic_id' => $topic->id,
+                                    'topic_name' => $topic->title,
+                                    'status' => $stat,
+                                ];
+                            }
+                        }
+
+                        $result[$week][] = [
+                            'course_content_id' => $courseContent->id,
+                            'title' => $courseContent->title,
+                            'type' => $courseContent->type,
+                            'week' => $courseContent->week,
+                            'file' => $courseContent->content ? asset($courseContent->content) : null,
+                            'topics' => $topics,
+                        ];
+                    }
+                }
+
+                ksort($result);
+
+                $finalResult[$section_name] = [
+                    'teacher_id' => $teacherId,
+                    'teacher_name' => $teacherName,
+                    'teacher_offered_course_id' => $toc_id,
+                    'content' => $result,
+                ];
+            }
+
+            return $finalResult;
+
+        } catch (Exception $ex) {
+            return [];
+        }
+    }
+    public static function getAllTeachersTaskAudit($offered_course_id, $isLab = false)
+    {
+        try {
+            $teacherCourses = teacher_offered_courses::with('teacher')
+                ->where('offered_course_id', $offered_course_id)
+                ->get();
+
+            $result = [];
+
+            foreach ($teacherCourses as $teacherCourse) {
+                $teacher = $teacherCourse->teacher;
 
 
+                if (!$teacher) {
+                    continue;
+                }
+
+                $teacherName = $teacher->name ?? 'Unknown';
+                $teacherId = $teacher->id;
+                $teacher_offered_course_id = $teacherCourse->id;
+                $section_name = (new section())->getNameByID($teacherCourse->section_id);
+                $categories = ['Quiz', 'Assignment'];
+
+                if ($isLab) {
+                    $categories[] = 'LabTask'; // only include LabTask if isLab is true
+                }
+
+                $taskCounts = [];
+
+                foreach ($categories as $category) {
+                    $query = task::where('teacher_offered_course_id', $teacher_offered_course_id)
+                        ->where('type', $category);
+
+                    $totalCount = $query->count();
+
+                    $limit = offered_course_task_limits::where('offered_course_id', $offered_course_id)
+                        ->where('task_type', $category)
+                        ->value('task_limit') ?? null;
+
+                    $taskCounts[$category] = [
+                        'total_count' => $totalCount,
+                        'limit' => $limit,
+                    ];
+
+                    if ($isLab) {
+                        $byTeacher = (clone $query)->where('CreatedBy', 'Teacher')->count();
+                        $byJunior = (clone $query)->where('CreatedBy', 'Junior Lecturer')->count();
+
+                        $taskCounts[$category]['ByTeacher'] = $byTeacher;
+                        $taskCounts[$category]['ByJunior'] = $byJunior;
+                    }
+                }
 
 
-    public static function getAllTeachersTopicStatusByCourse($teacher_offered_course_id)
+                $result[$section_name] = [
+                    'teacher_id' => $teacherId,
+                    'name' => $teacherName,
+                    'teacher_offered_course_id' => $teacher_offered_course_id,
+                    'tasks' => $taskCounts
+                ];
+            }
+
+            return $result;
+        } catch (Exception $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+  public static function getAllTeachersTopicStatusByCourse($teacher_offered_course_id)
     {
         try {
             $offered_course_id = teacher_offered_courses::where('id', $teacher_offered_course_id)
@@ -547,74 +692,6 @@ class Action extends Model
 
         } catch (Exception $ex) {
             return [];
-        }
-    }
-
-    public static function getAllTeachersTaskAudit($offered_course_id, $isLab = false)
-    {
-        try {
-            $teacherCourses = teacher_offered_courses::with('teacher')
-                ->where('offered_course_id', $offered_course_id)
-                ->get();
-
-            $result = [];
-
-            foreach ($teacherCourses as $teacherCourse) {
-                $teacher = $teacherCourse->teacher;
-
-
-                if (!$teacher) {
-                    continue;
-                }
-
-                $teacherName = $teacher->name ?? 'Unknown';
-                $teacherId = $teacher->id;
-                $teacher_offered_course_id = $teacherCourse->id;
-                $section_name = (new section())->getNameByID($teacherCourse->section_id);
-                $categories = ['Quiz', 'Assignment'];
-
-                if ($isLab) {
-                    $categories[] = 'LabTask'; // only include LabTask if isLab is true
-                }
-
-                $taskCounts = [];
-
-                foreach ($categories as $category) {
-                    $query = task::where('teacher_offered_course_id', $teacher_offered_course_id)
-                        ->where('type', $category);
-
-                    $totalCount = $query->count();
-
-                    $limit = offered_course_task_limits::where('offered_course_id', $offered_course_id)
-                        ->where('task_type', $category)
-                        ->value('task_limit') ?? null;
-
-                    $taskCounts[$category] = [
-                        'total_count' => $totalCount,
-                        'limit' => $limit,
-                    ];
-
-                    if ($isLab) {
-                        $byTeacher = (clone $query)->where('CreatedBy', 'Teacher')->count();
-                        $byJunior = (clone $query)->where('CreatedBy', 'Junior Lecturer')->count();
-
-                        $taskCounts[$category]['ByTeacher'] = $byTeacher;
-                        $taskCounts[$category]['ByJunior'] = $byJunior;
-                    }
-                }
-
-
-                $result[$section_name] = [
-                    'teacher_id' => $teacherId,
-                    'name' => $teacherName,
-                    'teacher_offered_course_id' => $teacher_offered_course_id,
-                    'tasks' => $taskCounts
-                ];
-            }
-
-            return $result;
-        } catch (Exception $e) {
-            return ['error' => $e->getMessage()];
         }
     }
 

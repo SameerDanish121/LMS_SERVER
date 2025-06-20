@@ -40,12 +40,59 @@ use Illuminate\Validation\ValidationException;
 
 class HodController extends Controller
 {
+    public function HodAuditReport(Request $req)
+    {
+        try {
+            // Validate the incoming request
+            $validator = Validator::make($req->all(), [
+                'offered_course_id' => 'required|integer|exists:offered_courses,id',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Validation failed.',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+          
+            $offered_course_id = $req->offered_course_id;
+            $offeredCourse = offered_courses::with(['course', 'session'])->find($offered_course_id);
+
+            $basic_info = [
+                'Session Name' => ($offeredCourse->session->name . '-' . $offeredCourse->session->year) ?? null,
+                'Course Name' => $offeredCourse->course->name ?? null,
+                'Course_Has_Lab' => $offeredCourse->course->lab == 1 ? 'Yes' : 'No',
+            ];
+
+          
+            $Course_Content_Report = Action::getAllTeachersTopicStatusByOfferedCourse($offered_course_id);
+            $Course_Task_Report = Action::getAllTeachersTaskAudit($offered_course_id, $offeredCourse->course->lab == 1);
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Audit report fetched successfully.',
+                'Course_Info' => $basic_info,
+                'Course_Content_Report' => $Course_Content_Report,
+                'Task_Report' => $Course_Task_Report,
+            ], 200);
+
+        } catch (Exception $ex) {
+            return response()->json([
+                'status' => false,
+                'message' => 'An error occurred while fetching the HOD audit report.',
+                'error' => $ex->getMessage()
+            ], 500);
+        }
+    }
+
     public function getAllCourseContents()
     {
         try {
             $result = [];
             $offeredCourses = offered_courses::with(['session', 'course'])
-                ->whereHas('session') 
+                ->whereHas('session')
                 ->get()
                 ->sortByDesc(fn($course) => $course->session->start_date) // Sort by session start_date descending
                 ->values(); // Reset keys

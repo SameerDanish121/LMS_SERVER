@@ -813,6 +813,7 @@ class SingleInsertionController extends Controller
                         'isLab' => $course->course->lab ? 'Yes' : 'No',
                         'credit_hours' => $course->course->credit_hours,
                         'short_form' => $course->course->description,
+                        'offered_course_id'=>$course->id,
                         'sections' => []
                     ];
                     $studentSectionIds = $course->studentOfferedCourses->pluck('section_id');

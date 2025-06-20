@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\coursecontent_topic;
+use App\Models\role;
 use App\Models\teacher_offered_courses;
 use Exception;
 use App\Models;
@@ -34,8 +35,101 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
+
+
 class AdminController extends Controller
 {
+
+
+    public function insertInitialData(Request $request)
+    {
+        try {
+            DB::beginTransaction();
+
+            $roles = [
+                'Admin',
+                'Datacell',
+                'HOD',
+                'Student',
+                'Teacher',
+                'JuniorLecturer',
+                'Parent',
+            ];
+
+            foreach ($roles as $type) {
+                role::firstOrCreate(['type' => $type]);
+            }
+
+            // 2. Insert Programs
+            $programs = [
+                'BCS' => 'Bachelor in Computer Science',
+                'BSE' => 'Bachelor in Software Engineering',
+                'BAI' => 'Bachelor in Artificial Intelligence',
+                'BIT' => 'Bachelor in Information Technology',
+            ];
+
+            foreach ($programs as $shortName => $desc) {
+                program::firstOrCreate(['name' => $shortName], ['description' => $desc]);
+            }
+
+            // 3. Insert Sessions (if no overlap or duplicate)
+            $sessions = [
+                [
+                    'name' => 'Spring',
+                    'year' => 2025,
+                    'start_date' => '2025-02-08',
+                    'end_date' => '2025-07-10'
+                ],
+                [
+                    'name' => 'Fall',
+                    'year' => 2025,
+                    'start_date' => '2025-09-01',
+                    'end_date' => '2026-01-31'
+                ]
+            ];
+
+            foreach ($sessions as $sessionData) {
+                // Check for duplicate session name/year combo
+                $exists = session::where('name', $sessionData['name'])
+                    ->where('year', $sessionData['year'])
+                    ->exists();
+
+                if ($exists) {
+                    continue;
+                }
+
+                // Check for overlapping date ranges
+                $overlap = session::where(function ($query) use ($sessionData) {
+                    $query->whereBetween('start_date', [$sessionData['start_date'], $sessionData['end_date']])
+                        ->orWhereBetween('end_date', [$sessionData['start_date'], $sessionData['end_date']])
+                        ->orWhere(function ($q) use ($sessionData) {
+                            $q->where('start_date', '<=', $sessionData['start_date'])
+                                ->where('end_date', '>=', $sessionData['end_date']);
+                        });
+                })->exists();
+
+                if (!$overlap) {
+                    session::create($sessionData);
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Initial roles, programs, and sessions inserted successfully.'
+            ], 200);
+
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Initialization failed.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function getCourseContentWithTopics(Request $request)
     {
         $offered_course_id = $request->input('offered_course_id');
@@ -1284,7 +1378,7 @@ class AdminController extends Controller
                         'image' => !empty($grader->student->image)
                             ? asset($grader->student->image)
                             : null,
-                        'status' => $grader->status,
+                        'status' =>teacher_grader::where('grader_id',$grader->id)->where('session_id',$currentSessionId)->exists()?'active':'in-active',
                         'type' => $grader->type,
                         'Grader of Teacher in Current Session' => $teacherGrader && $teacherGrader->teacher
                             ? $teacherGrader->teacher->name
@@ -1353,7 +1447,7 @@ class AdminController extends Controller
     {
         try {
             $currentSessionId = (new session())->getCurrentSessionId();
-            if($currentSessionId==0){
+            if ($currentSessionId == 0) {
                 return response()->json([
                     'message' => 'Unassigned Teachers Fetched Successfully',
                     'Unassigned Teachers' => [],
@@ -1363,14 +1457,14 @@ class AdminController extends Controller
             $assignedTeacherIds = teacher_grader::where('session_id', $currentSessionId)
                 ->pluck('teacher_id')
                 ->toArray();
-                $unassignedTeachers = $allTeachers->filter(function ($teacher) use ($assignedTeacherIds) {
-                    return !in_array($teacher->id, $assignedTeacherIds);
-                })->map(function ($teacher) {
-                    return [
-                        'id' => $teacher->id,
-                        'name' => $teacher->name,
-                    ];
-                })->values();
+            $unassignedTeachers = $allTeachers->filter(function ($teacher) use ($assignedTeacherIds) {
+                return !in_array($teacher->id, $assignedTeacherIds);
+            })->map(function ($teacher) {
+                return [
+                    'id' => $teacher->id,
+                    'name' => $teacher->name,
+                ];
+            })->values();
             return response()->json([
                 'message' => 'Unassigned Teachers Fetched Successfully',
                 'Unassigned Teachers' => $unassignedTeachers,
@@ -1469,20 +1563,14 @@ class AdminController extends Controller
         try {
             // Initialize an empty array for teachers
             $teachers = [];
-
-            // Apply filters if provided
             if ($request->user_id) {
-                // Fetch teacher by user_id
                 $teachers = Teacher::where('user_id', $request->user_id)->first();
             } elseif ($request->name) {
                 // Fetch teachers by name
                 $teachers = Teacher::where('name', $request->name)->get();
             } else {
-                // Fetch all teachers with related user data
                 $teachers = Teacher::with(['user'])->get();
             }
-
-            // Process each teacher's image
             foreach ($teachers as $teacher) {
                 $originalPath = $teacher->image; // Relative path to the image
 
@@ -1513,13 +1601,6 @@ class AdminController extends Controller
     public function allJuniorLecturers(Request $request)
     {
         try {
-            // $query = juniorlecturer::query();
-            // if ($request->filled('name')) {
-            //     $query->where('name', 'LIKE', '%' . $request->name . '%');
-            // }
-
-            // // Retrieve the results
-            // $lecturers = $query->get();
             $lecturers = juniorlecturer::with(['user'])->get();
             // Process each lecturer to encode the image as Base64
             foreach ($lecturers as $lecturer) {
@@ -1530,8 +1611,6 @@ class AdminController extends Controller
                     $lecturer->image = null; // Set to null if the image doesn't exist
                 }
             }
-
-            // Return the lecturers as JSON with a success message
             return response()->json(
                 [
                     'message' => 'Junior Lecturers Fetched Successfully',

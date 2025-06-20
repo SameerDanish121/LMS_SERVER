@@ -91,6 +91,18 @@ Route::prefix('Datacells')->group(function () {
     Route::get('/all-users', [AllControlsController::class, 'allUser']);
     Route::post('/update-email', [AllControlsController::class, 'updateEmail']);
     Route::post('/update-password', [AllControlsController::class, 'updatePassword']);
+    //UPDATE STUDENTS 
+    Route::post('/student/update/{id}', [DatacellsController::class, 'updateStudent']);
+    //PROMOTION-SCENARIO
+    Route::post('/promote-students', [DatacellsController::class, 'promoteStudents']);
+    //UPDATE TEACHER JUNIOR 
+    Route::post('/UpdateTeacher', [DatacellsController::class, 'UpdateTeacher']);
+    Route::post('/UpdateJuniorLecturer', [DatacellsController::class, 'UpdateJuniorLecturer']);
+    //USER
+    Route::get('/core-users', [DatacellsController::class, 'getCoreUsers']);
+    Route::post('/update-user-role', [DatacellsController::class, 'updateUserRole']);
+    Route::post('/delete-user-role', [DatacellsController::class, 'deleteUserRole']);
+
 });
 Route::prefix('Hod')->group(function () {
     Route::get('/content', [HodController::class, 'getAllCourseContents']);
@@ -109,6 +121,8 @@ Route::prefix('Hod')->group(function () {
     Route::post('/allocation/update', [HodController::class, 'updateTeacher']);
     Route::post('/allocation/junior/add_update', [HodController::class, 'assignOrUpdateJuniorLecturer']);
     Route::post('/update/{hod_id}', [HodController::class, 'updateHODInfo']);
+    Route::get('/course/audit', [HodController::class, 'HodAuditReport']);
+
 });
 //--------------------------------------------------( WEB SIDE )---------------------------------------------------//
 
@@ -368,7 +382,9 @@ Route::post('/verify/login', [AuthenticationController::class, 'verifyLoginOTP']
 Route::post('/store-fcmtoken', [NotificationController::class, 'storeFcmToken']);
 Route::get('/remember', [StudentsController::class, 'RememberMe']);
 Route::post('/student/notification', [NotificationController::class, 'SendNotificationToStudent']);
-Route::get('/notifications/user', action: [NotificationController::class, 'fetchUserNotifications']);
+Route::get('/notifications/user',  [NotificationController::class, 'fetchUserNotifications']);
+Route::post('/intial-data', [AdminController::class, 'insertInitialData']);
+
 Route::prefix('Teachers')->group(function () {
     Route::post('/add-or-update-feedbacks', [TeachersController::class, 'AddFeedback']);
     Route::get('/contest-list', [TeachersController::class, 'ContestList']);
@@ -527,7 +543,6 @@ Route::get('/', function () {
     return response()->json(['status' => 'success'], 200);
 });
 //--------------------------------------------------( ANDROID SIDE )---------------------------------------------------//
-
 
 
 
