@@ -43,10 +43,14 @@ use Carbon\Carbon;
 use App\Models\subjectresult;
 class SingleInsertionController extends Controller
 {
-    public function viewGroupedOfferedCourses()
+    public function viewGroupedOfferedCourses($program_id)
     {
         try {
             $offeredCourses = offered_courses::with(['session', 'course', 'course.prerequisite', 'offeredCourseTaskLimits'])
+                ->whereHas('course', function ($query) use ($program_id) {
+                    $query->where('program_id', $program_id)
+                        ->orWhereNull('program_id');
+                })
                 ->get();
             $grouped = $offeredCourses->groupBy(function ($course) {
                 return $course->session->name . '-' . $course->session->year;
@@ -67,10 +71,10 @@ class SingleInsertionController extends Controller
                         'program_id' => $course->course->program_id,
                         'type' => $course->course->type,
                         'description' => $course->course->description,
-                        'lab' => $course->course->lab==1?'Yes':'No',
+                        'lab' => $course->course->lab == 1 ? 'Yes' : 'No',
                         'task_limits' => $course->offeredCourseTaskLimits->map(function ($limit) {
                             return [
-                                'id'=>$limit->id,
+                                'id' => $limit->id,
                                 'task_type' => $limit->task_type,
                                 'task_limit' => $limit->task_limit
                             ];
@@ -101,7 +105,7 @@ class SingleInsertionController extends Controller
             'task_type' => 'required|in:Quiz,Assignment,LabTask',
             'task_limit' => 'required|integer|min:1',
         ]);
-        $offeredCourse = offered_courses::with(['course'])->where('id',$request->offered_course_id)->first();
+        $offeredCourse = offered_courses::with(['course'])->where('id', $request->offered_course_id)->first();
         if ($request->task_type === 'LabTask' && $offeredCourse->course->lab == 0) {
             return response()->json(['error' => 'LabTask not allowed for this course.'], 400);
         }
@@ -813,7 +817,7 @@ class SingleInsertionController extends Controller
                         'isLab' => $course->course->lab ? 'Yes' : 'No',
                         'credit_hours' => $course->course->credit_hours,
                         'short_form' => $course->course->description,
-                        'offered_course_id'=>$course->id,
+                        'offered_course_id' => $course->id,
                         'sections' => []
                     ];
                     $studentSectionIds = $course->studentOfferedCourses->pluck('section_id');
@@ -1735,6 +1739,7 @@ class SingleInsertionController extends Controller
 
             $name = trim($request->input('name'));
             $department = $request->input('department');
+            $program_id = program::where('name', $department)->first()->id;
             $designation = $request->input('Designation');
             $email = $request->input('email') ?? null;
             $postfix = '.hod@biit.edu';
@@ -1762,7 +1767,8 @@ class SingleInsertionController extends Controller
                 'user_id' => $userId,
                 'name' => $name,
                 'designation' => $designation,
-                'department' => $department
+                'department' => $department,
+                'program_id' => $program_id
             ]);
             if ($request->hasFile('image')) {
                 $image = $request->file('image');

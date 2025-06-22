@@ -738,6 +738,7 @@ class StudentsController extends Controller
                     "Username" => $HOD->user->username,
                     "Password" => $HOD->user->password,
                     "user_id" => $HOD->user->id,
+                    "program_id"=>$HOD->program_id,
                     "Current Session" => (new session())->getSessionNameByID($session->id) ?? 'N/A',
                     "Start Date" => $session->start_date ?? "N/A",
                     "End Date" => $session->end_date ?? "N/A",

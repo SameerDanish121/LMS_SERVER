@@ -130,7 +130,7 @@ class ExtraKhattaController extends Controller
                 $final = $row[4] ?? 0;
                 $qualityPoints = $row[5];
                 $grade = $row[6];
-                $lab = $isLab ? ($row[7] ?? 0) : null;
+                $lab = $isLab ? ($row[7] ?? 0) :0;
                 if (empty($regNo) || empty($name) || empty($qualityPoints) || empty($grade)) {
                     continue;
                 }
@@ -195,7 +195,7 @@ class ExtraKhattaController extends Controller
                             'mid' => 0,
                             'internal' => 0,
                             'final' => 0,
-                            'lab' => $isLab ? 0 : null,
+                            'lab' => $isLab ? 0 : 0,
                             'grade' => 'F',
                             'quality_points' => 0,
                         ]

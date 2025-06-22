@@ -981,7 +981,7 @@ class JuniorLecController extends Controller
             }
             $teacher_id = $request->teacher_id;
             $email = $request->email;
-
+ 
             $teacher = juniorlecturer::find($teacher_id);
             $user = user::find($teacher->user_id);
             if (!$teacher) {

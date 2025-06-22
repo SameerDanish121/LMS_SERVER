@@ -56,7 +56,7 @@ class HodController extends Controller
                 ], 422);
             }
 
-          
+
             $offered_course_id = $req->offered_course_id;
             $offeredCourse = offered_courses::with(['course', 'session'])->find($offered_course_id);
 
@@ -66,7 +66,7 @@ class HodController extends Controller
                 'Course_Has_Lab' => $offeredCourse->course->lab == 1 ? 'Yes' : 'No',
             ];
 
-          
+
             $Course_Content_Report = Action::getAllTeachersTopicStatusByOfferedCourse($offered_course_id);
             $Course_Task_Report = Action::getAllTeachersTaskAudit($offered_course_id, $offeredCourse->course->lab == 1);
 
@@ -952,14 +952,19 @@ class HodController extends Controller
         }
     }
 
-    public function getExamGroupedBySession()
+    public function getExamGroupedBySession($program_id)
     {
         try {
             $offeredCourses = offered_courses::with([
                 'course:id,name,code,description,lab',
                 'session:id,name,year,start_date',
-                'exams.questions' // Note: must match the relationship name
-            ])->get();
+                'exams.questions'
+            ])
+                ->whereHas('course', function ($query) use ($program_id) {
+                    $query->where('program_id', $program_id)
+                        ->orWhereNull('program_id');
+                })
+                ->get();
 
             if ($offeredCourses->isEmpty()) {
                 return response()->json([
@@ -1146,18 +1151,23 @@ class HodController extends Controller
             ], 500);
         }
     }
-    public function getCourseAllocationHistory(Request $request)
+    public function getCourseAllocationHistory($program_id)
     {
         try {
             // Fetch offered courses with related course and session data
-            $offeredCourses = offered_courses::with([
+          $offeredCourses = offered_courses::with([
                 'course:id,name,code,description,lab',
                 'session:id,name,year,start_date',
                 'teacherOfferedCourses.teacher:id,name,image',
                 'teacherOfferedCourses.section:id,program,semester,group',
                 'teacherOfferedCourses.teacherJuniorLecturer.juniorLecturer:id,name,image',
                 'studentOfferedCourses',
-            ])->get();
+            ])
+            ->whereHas('course', function ($query) use ($program_id) {
+                $query->where('program_id', $program_id)
+                      ->orWhereNull('program_id');
+            })
+            ->get();
 
             // Group offered courses by session (name-year), sorted by session start_date descending
             $groupedData = $offeredCourses->groupBy(function ($offeredCourse) {

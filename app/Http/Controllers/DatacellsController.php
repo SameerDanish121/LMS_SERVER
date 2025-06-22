@@ -57,6 +57,82 @@ use function PHPUnit\Framework\isEmpty;
 use Illuminate\Support\Facades\Storage;
 class DatacellsController extends Controller
 {
+
+
+    public function updateDirector(Request $request, $id)
+    {
+        try {
+            $director = Director::findOrFail($id); // fetch first to access user_id
+
+            $validator = Validator::make($request->all(), [
+                'name' => 'nullable|string|max:255',
+                'designation' => 'nullable|string|max:255',
+                'email' => [
+                    'nullable',
+                    'email',
+                    'max:255'
+                ],
+                'password' => 'nullable|string|min:6',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation failed.',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // Update Director fields
+            if ($request->filled('name')) {
+                $director->name = $request->input('name');
+            }
+
+            if ($request->filled('designation')) {
+                $director->designation = $request->input('designation');
+            }
+
+            // Handle image upload using FileHandler
+            if ($request->hasFile('image')) {
+                $directory = 'Images/Director';
+                $image = $request->file('image');
+                $storedFilePath = FileHandler::storeFile($director->user_id, $directory, $image);
+                $director->image = $storedFilePath;
+            }
+
+            $director->save();
+
+            // Update User model
+            $user = User::find($director->user_id);
+            if ($user) {
+                if ($request->filled('email')) {
+                    $user->email = $request->input('email');
+                }
+
+                if ($request->filled('password')) {
+                    $user->password = $request->input('password');
+                }
+
+                $user->save();
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Director updated successfully.',
+                'director' => $director
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An error occurred while updating the director.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
     public function deleteUserRole(Request $request)
     {
         try {
@@ -573,7 +649,7 @@ class DatacellsController extends Controller
             'session_id' => 'nullable|integer|exists:session,id',
             'status' => 'nullable|in:Graduate,UnderGraduate,Freeze',
             'program_name' => 'nullable|string|exists:program,name',
-            'image' => 'nullable|file|image|mimes:jpg,jpeg,png|max:2048'
+            'image' => 'nullable|file|image|mimes:jpg,jpeg,png'
         ]);
 
         if ($validator->fails()) {
@@ -606,7 +682,7 @@ class DatacellsController extends Controller
         }
         if ($request->hasFile('image')) {
             $regNo = $request->input('RegNo', $student->RegNo);
-            $imagePath = Action::storeFile($request->file('image'), 'Images/Student', $regNo);
+            $imagePath = Action::storeFile($request->file('image'), 'Images/Student', $student->user_id);
             $student->image = $imagePath;
         }
         $student->save();

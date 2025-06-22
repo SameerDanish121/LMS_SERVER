@@ -30,6 +30,7 @@ use App\Http\Controllers\ParentsController;
 
 
 //--------------------------------------------------( WEB SIDE )---------------------------------------------------//
+
 Route::prefix('Admin')->group(function () {
     Route::get('/AllStudent', [AdminController::class, 'AllStudent']);
     Route::get('/sections', [AdminController::class, 'showSections']);
@@ -114,9 +115,9 @@ Route::prefix('Hod')->group(function () {
     Route::get('/offered-courses/grouped', [HodController::class, 'getGroupedOfferedCoursesBySession']);
     Route::post('/content/update', [HodController::class, 'updateContent']);
     Route::post('/content/copy', [HodController::class, 'CopySemester']);
-    Route::get('/exam/all', [HodController::class, 'getExamGroupedBySession']);
+    Route::get('/exam/all/{program_id}', [HodController::class, 'getExamGroupedBySession']);
     Route::post('/exam/update', [HodController::class, 'updateExam']);
-    Route::get('/allocation/history', [HodController::class, 'getCourseAllocationHistory']);
+    Route::get('/allocation/history/{program_id}', [HodController::class, 'getCourseAllocationHistory']);
     Route::post('/allocation/add', [HodController::class, 'addTeacherOfferedCourse']);
     Route::post('/allocation/update', [HodController::class, 'updateTeacher']);
     Route::post('/allocation/junior/add_update', [HodController::class, 'assignOrUpdateJuniorLecturer']);
@@ -124,16 +125,8 @@ Route::prefix('Hod')->group(function () {
     Route::get('/course/audit', [HodController::class, 'HodAuditReport']);
 
 });
+
 //--------------------------------------------------( WEB SIDE )---------------------------------------------------//
-
-
-
-
-
-
-
-
-
 
 
 //--------------------------------------------------( GENERIC )---------------------------------------------------//
@@ -201,7 +194,10 @@ Route::prefix('Insertion')->group(function () {
     Route::post('/insert-task-limit', [SingleInsertionController::class, 'insertTaskLimit']);
     Route::post('/edit-task-limit', [SingleInsertionController::class, 'editTaskLimit']);
     Route::post('/delete-task-limit', [SingleInsertionController::class, 'deleteTaskLimit']);
-    Route::get('/AllLimitRecord', [SingleInsertionController::class, 'viewGroupedOfferedCourses']);
+    Route::get('/AllLimitRecord/{program_id}', [SingleInsertionController::class, 'viewGroupedOfferedCourses']);
+    //UPDATE DIRCTOR
+    Route::post('/director/update/{id}', [DatacellsController::class, 'updateDirector']);
+
 });
 Route::prefix('Dropdown')->group(function () {
     Route::get('/AllStudent', function () {
@@ -351,6 +347,29 @@ Route::prefix('Dropdown')->group(function () {
         })->values();
         return response()->json($sections, 200);
     });
+
+
+    Route::get('/Program/AllOfferedCourse/{program_id}', function ($program_id) {
+        $offeredCourses = offered_courses::with(['course', 'session'])
+            ->whereHas('course', function ($query) use ($program_id) {
+                $query->where('program_id', $program_id)
+                    ->orWhereNull('program_id');
+            })
+            ->get()
+            ->sortByDesc(fn($course) => $course->session->start_date ?? '0000-00-00')
+            ->map(function ($course) {
+                return [
+                    'id' => $course->id,
+                    'course' => $course->course->name,
+                    'session' => (new session())->getSessionNameByID($course->session->id),
+                    'data' => $course->course->name . ' (' . (new Session())->getSessionNameByID($course->session->id) . ')'
+                ];
+            })
+            ->values();
+
+        return response()->json($offeredCourses, 200);
+    });
+
 });
 Route::prefix('Archives')->group(function () {
     Route::get('/Directory', [StudentsController::class, 'getBIITFolderInfo']);
@@ -359,6 +378,7 @@ Route::prefix('Archives')->group(function () {
     Route::post('/compress-folder', [StudentsController::class, 'compressFolder']);
     Route::delete('/DeleteFolderByPath', [DatacellModuleController::class, 'DeleteFolderByPath']);
 });
+
 //--------------------------------------------------( GENERIC )---------------------------------------------------//
 
 
@@ -373,6 +393,7 @@ Route::prefix('Archives')->group(function () {
 
 
 //--------------------------------------------------( ANDROID SIDE )---------------------------------------------------//
+
 Route::get('/notifications/fetch-latest', [NotificationController::class, 'fetchNewNotifications']);
 Route::get('/Login', [StudentsController::class, 'Login']);
 Route::post('/forgot-password', [AuthenticationController::class, 'sendOTP']);
@@ -382,7 +403,7 @@ Route::post('/verify/login', [AuthenticationController::class, 'verifyLoginOTP']
 Route::post('/store-fcmtoken', [NotificationController::class, 'storeFcmToken']);
 Route::get('/remember', [StudentsController::class, 'RememberMe']);
 Route::post('/student/notification', [NotificationController::class, 'SendNotificationToStudent']);
-Route::get('/notifications/user',  [NotificationController::class, 'fetchUserNotifications']);
+Route::get('/notifications/user', [NotificationController::class, 'fetchUserNotifications']);
 Route::post('/intial-data', [AdminController::class, 'insertInitialData']);
 
 Route::prefix('Teachers')->group(function () {
@@ -493,9 +514,12 @@ Route::prefix('Students')->group(function () {
     Route::get('/attendance', [StudentsController::class, 'getAttendance']);
     Route::delete('/contested-attendance/{id}/withdraw', [StudentsController::class, 'withdrawRequest']);
     Route::get('/attendancePerSubject', [StudentsController::class, 'AttendancePerSubject']);
+    
     Route::get('/get/notification', [StudentsController::class, 'Notifications']);
+    
     Route::post('/update-password', [StudentsController::class, 'updatePassword']);
     Route::post('/update-student-image', [StudentsController::class, 'updateStudentImage']);
+    
     Route::get('/task/details', [StudentsController::class, 'getTaskDetails']);
     Route::post('/submit-task-file', [StudentsController::class, 'submitFileAnswer']);
     Route::post('/submit-quiz', [StudentsController::class, 'submitQuizAnswer']);
@@ -542,6 +566,7 @@ Route::prefix('parents')->group(function () {
 Route::get('/', function () {
     return response()->json(['status' => 'success'], 200);
 });
+
 //--------------------------------------------------( ANDROID SIDE )---------------------------------------------------//
 
 
@@ -555,6 +580,7 @@ Route::get('/', function () {
 
 
 //--------------------------------------------------( JUNK )---------------------------------------------------//
+
 Route::post('/test_fcm', [NotificationController::class, 'TestFirebase']);
 Route::get('/current/session', function () {
     return (new session())->getCurrentSessionWeek() ?? 0;
@@ -568,4 +594,5 @@ Route::prefix('Un-usable')->group(function () {
     Route::post('/update-admin-image', [AdminController::class, 'updateAdminImage']);
     Route::post('/EnrollStudent', [DatacellsController::class, 'NewEnrollment']);
 });
+
 //--------------------------------------------------( JUNK )---------------------------------------------------//
