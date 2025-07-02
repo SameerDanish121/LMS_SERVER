@@ -3,6 +3,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\task;
 use App\Models\notification;
+use App\Models\student_task_result;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -73,7 +74,63 @@ class NotifyUpcomingTasks extends Command
                 ]);
                 $this->info("Notification pushed: {$item['title']}");
             }
+           
         }
+         $this->autoMarkMcqsTasks();
         return Command::SUCCESS;
     }
+    public function autoMarkMcqsTasks()
+    {
+        $now = Carbon::now();
+        $this->info('Started Auto-Marking Quizes ( MCQS ) , that are Not ATTEMPTED BY STUDENT ');
+        $tasks = task::where('isMarked', 0)
+            ->where('due_date', '<', $now)
+            ->whereHas('courseContent', function ($query) {
+                $query->where('content', 'MCQS');
+            })
+            ->get();
+        $this->info('Matching tasks: ' . $tasks->count());
+        foreach ($tasks as $task) {
+            try {
+                $sectionId = $task->getSectionIdByTaskId($task->id);
+
+                if (!$sectionId) {
+                    Log::warning("No section found for task ID {$task->id}");
+                    continue;
+                }
+
+                $students = \App\Models\Student::select('student.id', 'student.name', 'student.RegNo')
+                    ->join('student_offered_courses', 'student.id', '=', 'student_offered_courses.student_id')
+                    ->join('offered_courses', 'student_offered_courses.offered_course_id', '=', 'offered_courses.id')
+                    ->where('student_offered_courses.section_id', $sectionId)
+                    ->where('offered_courses.session_id', (new \App\Models\session())->getCurrentSessionId())
+                    ->get();
+
+                $markedCount = 0;
+
+                foreach ($students as $student) {
+                    $exists = student_task_result::where('Task_id', $task->id)
+                        ->where('Student_id', $student->id)
+                        ->exists();
+
+                    if (!$exists) {
+                        student_task_result::updateOrInsert(
+                            ['Task_id' => $task->id, 'Student_id' => $student->id],
+                            ['ObtainedMarks' => 0]
+                        );
+                        $markedCount++;
+                    }
+                }
+
+                $task->isMarked = 1;
+                $task->save();
+
+                $this->info("✅ Task '{$task->title}' marked 0 for $markedCount student(s).");
+
+            } catch (\Exception $e) {
+                Log::error("❌ Error handling task ID {$task->id}: " . $e->getMessage());
+            }
+        }
+    }
+
 }

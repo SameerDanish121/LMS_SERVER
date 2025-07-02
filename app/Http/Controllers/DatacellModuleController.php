@@ -2068,13 +2068,14 @@ class DatacellModuleController extends Controller
                 'excel_file' => 'required|mimes:xlsx,xls',
                 'session' => 'required'
             ]);
-
+            
             $session_name = $request->session;
             $session_id = (new session())->getSessionIdByName($session_name);
+
             if (!$session_id) {
                 $session_id = (new session())->getUpcomingSessionId();
             }
-
+            timetable::where('session_id',$session_id)->delete();
             $file = $request->file('excel_file');
             $spreadsheet = IOFactory::load($file->getPathname());
             $sheetData = $spreadsheet->getActiveSheet()->toArray(null, true, true, true);
@@ -2175,7 +2176,7 @@ class DatacellModuleController extends Controller
                             if ($timetable['status'] == 'error') {
                                 $Error[] = $timetable;
                             } else {
-                                $Success[] = $Error[] = [
+                                $Success[] = [
                                     "status" => "success",
                                     "Day" => $Day,
                                     "Time" => $startTimeFormatted . '-' . $endTimeFormatted,
@@ -2219,7 +2220,7 @@ class DatacellModuleController extends Controller
                             if ($timetable['status'] == 'error') {
                                 $Error[] = $timetable;
                             } else {
-                                $Success[] = $Error[] = [
+                                $Success[]  = [
                                     "status" => "success",
                                     "Day" => $Day,
                                     "Time" => $startTimeFormatted . '-' . $endTimeFormatted,
@@ -2263,7 +2264,7 @@ class DatacellModuleController extends Controller
                             if ($timetable['status'] == 'error') {
                                 $Error[] = $timetable;
                             } else {
-                                $Success[] = $Error[] = [
+                                $Success[]= [
                                     "status" => "success",
                                     "Day" => $Day,
                                     "Time" => $startTimeFormatted . '-' . $endTimeFormatted,
@@ -2308,7 +2309,7 @@ class DatacellModuleController extends Controller
                             if ($timetable['status'] == 'error') {
                                 $Error[] = $timetable;
                             } else {
-                                $Success[] = $Error[] = [
+                                $Success[]  = [
                                     "status" => "success",
                                     "Day" => $Day,
                                     "Time" => $startTimeFormatted . '-' . $endTimeFormatted,
@@ -2352,7 +2353,7 @@ class DatacellModuleController extends Controller
                             if ($timetable['status'] == 'error') {
                                 $Error[] = $timetable;
                             } else {
-                                $Success[] = $Error[] = [
+                                $Success[]  = [
                                     "status" => "success",
                                     "Day" => $Day,
                                     "Time" => $startTimeFormatted . '-' . $endTimeFormatted,

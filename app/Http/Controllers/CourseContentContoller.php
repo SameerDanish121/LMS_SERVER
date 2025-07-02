@@ -587,36 +587,45 @@ class CourseContentContoller extends Controller
         }
     }
     public function YourCurrentSessionCourses(Request $request)
-    {
-        try {
-            $teacher_id = $request->teacher_id;
-            $ActiveCourses = self::getActiveCoursesForTeacher($teacher_id);
-            $uniqueCourses = collect($ActiveCourses)->unique('offered_course_id')->values()->all();
-            $courses = [];
-            foreach ($uniqueCourses as $course) {
-                $courseId = $course['offered_course_id'];
-                $coursename = $course['course_name'];
-                $courselab = $course['course_lab'];
-                $AllSection = collect($ActiveCourses)->where('offered_course_id', $courseId)->toArray();
-                $courses[] = [
-                    'offered_course_id' => $courseId,
-                    'course_name' => $coursename,
-                    'course_of_lab' => $courselab,
-                    'sections' => $AllSection
+{
+    try {
+        $teacher_id = $request->teacher_id;
+        $ActiveCourses = self::getActiveCoursesForTeacher($teacher_id);
+        $uniqueCourses = collect($ActiveCourses)->unique('offered_course_id')->values()->all();
+        $courses = [];
 
-                ];
-            }
-            return response()->json([
-                'status' => 'success',
-                'courses' => $courses,
-            ], 200);
-        } catch (Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ], 500);
+        foreach ($uniqueCourses as $course) {
+            $courseId = $course['offered_course_id'];
+            $coursename = $course['course_name'];
+            $courselab = $course['course_lab'];
+
+            // Force numerically indexed array for sections
+            $AllSection = array_values(
+                collect($ActiveCourses)->where('offered_course_id', $courseId)->toArray()
+            );
+
+            $courses[] = [
+                'offered_course_id' => $courseId,
+                'course_name' => $coursename,
+                'course_of_lab' => $courselab,
+                'sections' => $AllSection
+            ];
         }
+
+        return response()->json([
+            'status' => 'success',
+            'courses' => $courses,
+        ], 200);
+
+    } catch (Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage(),
+        ], 500);
     }
+}
+
+  
     public function getTaskDetails(Request $request)
     {
         try {

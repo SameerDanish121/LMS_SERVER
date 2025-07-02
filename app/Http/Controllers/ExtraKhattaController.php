@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\grader_task;
 use DateTime;
 use Exception;
 use App\Models;
@@ -130,7 +131,7 @@ class ExtraKhattaController extends Controller
                 $final = $row[4] ?? 0;
                 $qualityPoints = $row[5];
                 $grade = $row[6];
-                $lab = $isLab ? ($row[7] ?? 0) :0;
+                $lab = $isLab ? ($row[7] ?? 0) : 0;
                 if (empty($regNo) || empty($name) || empty($qualityPoints) || empty($grade)) {
                     continue;
                 }
@@ -147,7 +148,7 @@ class ExtraKhattaController extends Controller
                     $faultyData[] = ["status" => "error", "issue" => "Student not enrolled in the course"];
                     continue;
                 }
-                if ($isLab  && $lab < 8) {
+                if ($isLab && $lab < 8) {
                     $grade = 'F';
                 }
                 $existingResult = subjectresult::where('student_offered_course_id', $studentOfferedCourse->id)->first();
@@ -734,6 +735,70 @@ class ExtraKhattaController extends Controller
         }
     }
 
+    public function removeGrader(Request $request)
+    {
+        try {
+            $request->validate([
+                'grader_id' => 'required',
+            ]);
+
+            $graderId = $request->input('grader_id');
+            $sessionId = (new session())->getCurrentSessionId();
+
+            if ($sessionId == 0) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No current session found. Nothing to remove.'
+                ], 404);
+            }
+            // $deletedTasks = grader_task::where('Grader_id', $graderId)
+            //     ->whereHas('task', function ($query) {
+            //         $query->where('isMarked', false);
+            //     })
+            //     ->delete();
+            $taskIds = DB::table('task')
+                ->join('grader_task', 'task.id', '=', 'grader_task.Task_id')
+                ->where('grader_task.Grader_id', $graderId)
+                ->where('task.isMarked', 0)
+                ->pluck('grader_task.Task_id')
+                ->toArray();
+
+            $deletedTasks = 0;
+
+            if (!empty($taskIds)) {
+                $deletedTasks = DB::table('grader_task')
+                    ->where('Grader_id', $graderId)
+                    ->whereIn('Task_id', $taskIds)
+                    ->delete();
+            }
+
+            $deletedGraderLink = teacher_grader::where('grader_id', $graderId)
+                ->where('session_id', $sessionId)
+                ->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Grader and unmarked tasks removed successfully.',
+                'session_id' => $sessionId,
+                'grader_id' => $graderId,
+                'deleted_links' => $deletedGraderLink,
+                'deleted_tasks' => $deletedTasks
+            ], 200);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unexpected error occurred',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
     public function assignGrader(Request $request)
     {
