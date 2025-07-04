@@ -8,7 +8,6 @@ class date_sheet extends Model
 {
     protected $table = 'date_sheet';
 
-    // Set the primary key for the table
     protected $primaryKey = 'id';
 
     // Specify that the primary key is not auto-incrementing (since it's an integer)
@@ -31,31 +30,17 @@ class date_sheet extends Model
         'course_id',
         'session_id',
     ];
-
-    // Define relationships
-
-    /**
-     * Relationship with the Section model.
-     * A date sheet belongs to a section.
-     */
     public function section()
     {
         return $this->belongsTo(Section::class, 'section_id');
     }
 
-    /**
-     * Relationship with the Course model.
-     * A date sheet belongs to a course.
-     */
+  
     public function course()
     {
         return $this->belongsTo(Course::class, 'course_id');
     }
 
-    /**
-     * Relationship with the Session model.
-     * A date sheet belongs to a session.
-     */
     public function session()
     {
         return $this->belongsTo(Session::class, 'session_id');

@@ -180,6 +180,7 @@ class StudentManagement extends Model
                 $courseName = $offeredCourse->course->name;
                 $courses[] = [
                     'course_name' => $courseName,
+                    'course_id' => $offeredCourse->course_id,
                     'Session' => (new session())->getSessionNameByID($currentSessionId),
                     'Section' => (new section())->getNameByID($enrolledCourse->section_id),
                     'offered_course_id' => $offeredCourse->id,

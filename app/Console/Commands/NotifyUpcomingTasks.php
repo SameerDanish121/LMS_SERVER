@@ -132,5 +132,4 @@ class NotifyUpcomingTasks extends Command
             }
         }
     }
-
 }

@@ -55,7 +55,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class ExtraKhattaController extends Controller
-{ // Include the trait
+{
     public static function EligibleToEnroll($student_id, $section_id)
     {
         $section = Section::find($section_id);
@@ -86,8 +86,6 @@ class ExtraKhattaController extends Controller
         }
         return true; // Student meets promotion criteria
     }
-
-
     public function AddSubjectResult(Request $request)
     {
         try {
@@ -391,7 +389,6 @@ class ExtraKhattaController extends Controller
     }
     public function addTeacherOfferedCourses(Request $request)
     {
-        // Validate the input
         $validatedData = $request->validate([
             'data' => 'required|array|min:1',
             'data.*.section_id' => 'required|integer',
@@ -481,7 +478,6 @@ class ExtraKhattaController extends Controller
     }
     public function updateOrInsertTeacherOfferedCourses(Request $request)
     {
-        // Validate the input
         $validatedData = $request->validate([
             'data' => 'required|array|min:1',
             'data.*.section_id' => 'required|integer',
@@ -575,7 +571,6 @@ class ExtraKhattaController extends Controller
     public function assignJuniorLecturer(Request $request)
     {
         try {
-            // Validate the input list of data
             $request->validate([
                 'data' => 'required|array|min:1',
                 'data.*.teacher_offered_course_id' => 'required|integer',

@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 use App\Models\contested_attendance;
 use App\Models\coursecontent;
 use App\Models\coursecontent_topic;
+use App\Models\date_sheet;
 use App\Models\Director;
 use App\Models\exam;
 use App\Models\grader;
@@ -56,6 +57,67 @@ use Illuminate\Support\Facades\File;
 use Intervention\Image\ImageManager;
 class StudentsController extends Controller
 {
+    
+    
+    public function getStudentDateSheet($student_id)
+    {
+        try {
+            $currentSessionId = (new session())->getCurrentSessionId();
+            if ($currentSessionId == 0) {
+                return response()->json(['error' => 'No active session found'], 404);
+            }
+
+            $courses = StudentManagement::getActiveEnrollmentCoursesName($student_id);
+            $mid = [];
+            $final = [];
+
+            foreach ($courses as $course) {
+                $section_id = $course['section_id'];
+                $course_id = $course['course_id'];
+                $dateSheets = date_sheet::where('session_id', $currentSessionId)
+                    ->where('section_id', $section_id)
+                    ->where('course_id', $course_id)
+                    ->orderBy('Date', 'asc')
+                    ->get();
+
+                foreach ($dateSheets as $sheet) {
+                    $date = Carbon::parse($sheet->Date);
+                    $today = Carbon::today();
+
+                    $entry = [
+                        'Course Name' => $course['course_name'],
+                        'Course Code' => $sheet->course->code ?? '', 
+                        'Section Name' =>$course['Section'],
+                        'Start Time' => $sheet->Start_Time,
+                        'End Time' => $sheet->End_Time,
+                        'Day' => $date->format('l'), 
+                        'Date' => $date->format('d-F-Y'), 
+                        'Type' => $sheet->Type,
+                        'isToday' => $date->isSameDay($today) ? 'Yes' : 'No',
+                    ];
+
+                    if (strtolower($sheet->Type) === 'mid') {
+                        $mid[] = $entry;
+                    } elseif (strtolower($sheet->Type) === 'final') {
+                        $final[] = $entry;
+                    }
+                }
+            }
+
+            $sessionName = (new session())->getSessionNameByID($currentSessionId);
+
+            $response = [
+                'session' => $sessionName,
+                'mid' => $mid,
+                'fianl' => $final,
+            ];
+
+            return response()->json($response, 200);
+
+        } catch (Exception $e) {
+            return response()->json(['error' => 'Unexpected error: ' . $e->getMessage()], 500);
+        }
+    }
     public function getCelendarData(Request $request)
     {
         $sessions = Session::orderBy('start_date', 'desc')->get();

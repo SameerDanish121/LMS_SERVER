@@ -682,7 +682,7 @@ class DatacellsController extends Controller
         }
         if ($request->hasFile('image')) {
             $regNo = $request->input('RegNo', $student->RegNo);
-            $imagePath = Action::storeFile($request->file('image'), 'Images/Student', $student->user_id);
+            $imagePath = FileHandler::storeFile($student->user_id, 'Images/Student', $request->file('image'));
             $student->image = $imagePath;
         }
         $student->save();

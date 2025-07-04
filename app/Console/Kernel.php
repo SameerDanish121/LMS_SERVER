@@ -12,8 +12,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('notify:tasks')->everyMinute(); // or ->everyFiveMinutes()
     }
-
-    protected function commands(): void
+// $schedule->command('email:reminders')->dailyAt('09:00');
+//     $schedule->command('records:clean')->weekly();
+    protected function commands()
     {
         $this->load(__DIR__ . '/Commands');
 

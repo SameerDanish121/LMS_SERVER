@@ -19,6 +19,9 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
 class ParentsController extends Controller
 {
     public function Notification(Request $request)
@@ -273,29 +276,52 @@ class ParentsController extends Controller
     }
 
     // 3. Remove Parent (safe delete)
-    public function Remove($parentId)
-    {
+    // public function Remove($parentId)
+    // {
+    //     $parent = parents::find($parentId);
+    //     if (!$parent) {
+    //         return response()->json(['message' => 'Parent not found.'], 404);
+    //     }
+    //     parent_student::where('parent_id', $parentId)->delete();
+    //     $parent->delete();
+    //     $user = user::find($parent->user_id);
+    //     if ($user) {
+    //         $user->delete();
+    //     }
+    //     return response()->json(['message' => 'Parent and associated user deleted successfully.'], 200);
+    // }
+
+
+public function Remove($parentId)
+{
+    try {
+        DB::beginTransaction();
+
         $parent = parents::find($parentId);
         if (!$parent) {
             return response()->json(['message' => 'Parent not found.'], 404);
         }
 
-        // Delete parent_student relations first
+        $userId = $parent->user_id;
         parent_student::where('parent_id', $parentId)->delete();
+        notification::where('TL_receiver_id', $userId)->delete();
+        $parent->delete();
+        $user = user::find($userId);
+        if ($user) {
+            $user->delete();
+        }
 
-        // // Delete parent record
-        // $parent->delete();
+        DB::commit();
+        return response()->json(['message' => 'Parent, associated user, and notifications deleted successfully.'], 200);
+    } catch (Exception $e) {
+        DB::rollBack();
+        Log::error('Error deleting parent: '.$e->getMessage());
 
-        // // Delete associated user
-        // $user = user::find($parent->user_id);
-        // if ($user) {
-        //     $user->delete();
-        // }
-
-        return response()->json(['message' => 'Parent and associated user deleted successfully.'], 200);
+        return response()->json([
+            'error' => 'Unexpected error: ' . $e->getMessage()
+        ], 500);
     }
-
-    // 4. Update Email of Parent's user
+}
     public function UpdateEmail(Request $request, $parentId)
     {
         $validator = Validator::make($request->all(), [

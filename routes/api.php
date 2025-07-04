@@ -130,6 +130,7 @@ Route::prefix('Hod')->group(function () {
 //--------------------------------------------------( WEB SIDE )---------------------------------------------------//
 
 
+
 //--------------------------------------------------( GENERIC )---------------------------------------------------//
 
 Route::prefix('Uploading')->group(function () {
@@ -198,6 +199,8 @@ Route::prefix('Insertion')->group(function () {
     Route::get('/AllLimitRecord/{program_id}', [SingleInsertionController::class, 'viewGroupedOfferedCourses']);
     //UPDATE DIRCTOR
     Route::post('/director/update/{id}', [DatacellsController::class, 'updateDirector']);
+    //DATE-SHEET
+    Route::get('/datesheet/full', [SingleInsertionController::class, 'getFullDateSheet']);
 
 });
 Route::prefix('Dropdown')->group(function () {
@@ -545,6 +548,10 @@ Route::prefix('Students')->group(function () {
     Route::post('/update-teacher-password', [JuniorLecController::class, 'updateTeacherPassword']);
     Route::post('/update-teacher-image', [TeachersController::class, 'updateTeacherImage']);
     Route::post('/update-teacher-email', [JuniorLecController::class, 'updateTeacherEmail']);
+
+    //date sheet
+    Route::get('/datesheet/{student_id}', [StudentsController::class, 'getStudentDateSheet']);
+
 });
 Route::prefix('Grader')->group(function () {
     Route::get('/GraderInfo', [GraderController::class, 'GraderOf']);

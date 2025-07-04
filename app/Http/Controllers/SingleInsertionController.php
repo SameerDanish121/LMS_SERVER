@@ -14,6 +14,7 @@ use App\Models\reenrollment_requests;
 use App\Models\role;
 use App\Models\section;
 use App\Models\session;
+use App\Models\sessionresult;
 use App\Models\student;
 use App\Models\student_exam_result;
 use App\Models\student_offered_courses;
@@ -28,6 +29,7 @@ use App\Models\Action;
 use App\Models\Course;
 use App\Models\teacher;
 use App\Models\datacell;
+use App\Models\date_sheet;
 use App\Models\Director;
 use App\Models\FileHandler;
 use App\Models\Hod;
@@ -43,6 +45,60 @@ use Carbon\Carbon;
 use App\Models\subjectresult;
 class SingleInsertionController extends Controller
 {
+
+    public function getFullDateSheet()
+    {
+        try {
+            $currentSessionId = (new session())->getCurrentSessionId();
+            if ($currentSessionId == 0) {
+                return response()->json(['error' => 'No active session found.'], 404);
+            }
+            $dateSheets =date_sheet::with(['course', 'section'])
+                ->where('session_id', $currentSessionId)
+                ->orderBy('Date', 'asc')
+                ->get();
+
+            $today = Carbon::today();
+            $mid = [];
+            $final = [];
+
+            foreach ($dateSheets as $sheet) {
+                $timeKey = $sheet->Start_Time . '-' . $sheet->End_Time;
+                $sectionName = (new section())->getNameByID($sheet->section_id);
+
+                $entry = [
+                    'Course Name' => $sheet->course->name ?? '',
+                    'Course Code' => $sheet->course->code ?? '',
+                    'Section Name' => $sectionName,
+                    'Start Time' => $sheet->Start_Time,
+                    'End Time' => $sheet->End_Time,
+                    'Day' => Carbon::parse($sheet->Date)->format('l'),
+                    'Date' => Carbon::parse($sheet->Date)->format('d-F-Y'),
+                    'isToday' => Carbon::parse($sheet->Date)->isSameDay($today) ? 'Yes' : 'No',
+                ];
+
+                // Grouping by Type → Time Slot → Section
+                if (strtolower($sheet->Type) === 'mid') {
+                    $mid[$timeKey][$sectionName][] = $entry;
+                } elseif (strtolower($sheet->Type) === 'final') {
+                    $final[$timeKey][$sectionName][] = $entry;
+                }
+            }
+
+            $sessionName = (new session())->getSessionNameByID($currentSessionId);
+
+            return response()->json([
+                'SESSION' => $sessionName,
+                'Mid' => $mid,
+                'Final' => $final
+            ], 200);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'error' => 'Unexpected error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
     public function viewGroupedOfferedCourses($program_id)
     {
         try {
@@ -875,7 +931,7 @@ class SingleInsertionController extends Controller
     }
     public function storeOrUpdateSubjectResult(Request $request)
     {
-        // Validate only student_offered_course_id is required
+
         $validator = Validator::make($request->all(), [
             'student_offered_course_id' => 'required|integer|exists:student_offered_courses,id',
         ]);
@@ -887,26 +943,139 @@ class SingleInsertionController extends Controller
                 'errors' => $validator->errors()
             ], 422);
         }
+        $student_offered_course = student_offered_courses::find($request->student_offered_course_id);
 
+        if (!$student_offered_course) {
+            return response()->json(['error' => 'Student offered course not found.'], 404);
+        }
         $data = [
             'mid' => $request->input('mid', 0),
             'final' => $request->input('final', 0),
             'internal' => $request->input('internal', 0),
             'lab' => $request->input('lab', 0),
             'quality_points' => $request->input('quality_points', 0),
-            'grade' => $request->input('grade', 'Z'),
+            'grade' => $request->input('grade', 'F'),
         ];
 
         $subjectResult = subjectresult::updateOrCreate(
             ['student_offered_course_id' => $request->student_offered_course_id],
             $data
         );
-
+        $student_offered_course->grade = $data['grade'];
+        $student_offered_course->save();
+        $offered_course = offered_courses::find($student_offered_course->offered_course_id);
+        $GPA = self::calculateAndStoreGPA($student_offered_course->student_id, $offered_course->session_id);
+        $CGPA = self::calculateAndUpdateCGPA($student_offered_course->student_id);
         return response()->json([
             'status' => 'success',
             'message' => 'Subject result saved successfully.',
             'data' => $subjectResult
         ], 200);
+    }
+    public static function getTotalQualityPoints($student_id, $session_id)
+    {
+        // Validate inputs
+        if (!$student_id || !$session_id) {
+            return 0; // Return 0 if either parameter is not provided
+        }
+
+        // Get the enrollments for the given student_id and session_id
+        $studentCourses = student_offered_courses::where('student_id', $student_id)
+            ->whereHas('offeredCourse', function ($query) use ($session_id) {
+                $query->where('session_id', $session_id);
+            })
+            ->get();
+        if ($studentCourses->isEmpty()) {
+            return 0;
+        }
+        $totalQualityPoints = 0;
+        foreach ($studentCourses as $studentCourse) {
+            $subjectResult = subjectresult::where('student_offered_course_id', $studentCourse->id)->first();
+            if ($subjectResult) {
+                $totalQualityPoints += $subjectResult->quality_points;
+            }
+        }
+        return $totalQualityPoints;
+    }
+    public static function calculateCreditHours($student_id, $session_id)
+    {
+        if (!$student_id || !$session_id) {
+            return 0;
+        }
+        $enrollments = student_offered_courses::with(['offeredCourse.course'])->where('student_id', $student_id)
+            ->whereHas('offeredCourse', function ($query) use ($session_id) {
+                $query->where('session_id', $session_id);
+            })
+            ->get();
+        if ($enrollments->isEmpty()) {
+            return 0;
+        }
+        $totalCreditHours = $enrollments->reduce(function ($carry, $enrollment) {
+            return $carry + $enrollment->offeredCourse->course->credit_hours;
+        }, 0);
+        return $totalCreditHours;
+    }
+    public static function calculateAndStoreGPA($student_id, $session_id)
+    {
+        $totalQualityPoints = self::getTotalQualityPoints($student_id, $session_id);
+        $totalCreditHours = self::calculateCreditHours($student_id, $session_id);
+        if ($totalCreditHours == 0) {
+            return 0;
+        }
+        $GPA = $totalQualityPoints / $totalCreditHours;
+        $sessionResult = sessionresult::where('student_id', $student_id)
+            ->where('session_id', $session_id)
+            ->first();
+        if ($sessionResult) {
+            $sessionResult->update([
+                'GPA' => $GPA,
+                'Total_Credit_Hours' => $totalCreditHours,
+                'ObtainedCreditPoints' => $totalQualityPoints,
+            ]);
+        } else {
+            sessionresult::create([
+                'student_id' => $student_id,
+                'session_id' => $session_id,
+                'GPA' => $GPA,
+                'Total_Credit_Hours' => $totalCreditHours,
+                'ObtainedCreditPoints' => $totalQualityPoints,
+            ]);
+        }
+
+        return $GPA;
+    }
+    public static function calculateAndUpdateCGPA($student_id)
+    {
+        if (!$student_id) {
+            return false;
+        }
+        $cgpa = self::calculateCGPA($student_id);
+        $student = student::find($student_id);
+        if (!$student) {
+            return false;
+        }
+        $student->cgpa = $cgpa;
+        $student->save();
+
+        return $cgpa;
+    }
+    public static function calculateCGPA($student_id)
+    {
+        if (!$student_id) {
+            return 0;
+        }
+        $sessionResults = sessionresult::where('student_id', $student_id)->get();
+
+        if ($sessionResults->isEmpty()) {
+            return 0;
+        }
+        $totalCreditHours = $sessionResults->sum('Total_Credit_Hours');
+        $totalObtainedPoints = $sessionResults->sum('ObtainedCreditPoints');
+        if ($totalCreditHours == 0) {
+            return 0;
+        }
+        $CGPA = $totalObtainedPoints / $totalCreditHours;
+        return round($CGPA, 2);
     }
     public static function populateExamResultValues($islab = false, $credit_hours = 1, $student_offered_course_id = null)
     {
