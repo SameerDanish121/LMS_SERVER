@@ -8,12 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class parents extends Model
 {
     use HasFactory;
-
-    // If your table name is not the plural of the model name,
-    // specify it explicitly
     protected $table = 'parents';
-
-    // Primary key type is int and auto-incrementing by default
     protected $primaryKey = 'id';
 
     // If you don't have timestamps columns, disable them
@@ -43,4 +38,9 @@ class parents extends Model
     {
         return $this->belongsToMany(Student::class, 'parent_student', 'parent_id', 'student_id');
     }
+    public function restrictedCourses()
+{
+    return $this->hasMany(restricted_parent_courses::class, 'parent_id');
+}
+
 }

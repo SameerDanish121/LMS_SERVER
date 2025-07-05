@@ -469,6 +469,10 @@ Route::prefix('Teachers')->group(function () {
     //Audit Report and View Details
     Route::get('/audit', [CourseContentContoller::class, 'getAuditReportOfTeachersForASubject']);
     Route::get('/section/details/{teacher_offered_course_id}', [JuniorLecController::class, 'getSectionDetails']);
+    //notes remarks for student
+    Route::post('/remarks/add_or_update', [TeachersController::class, 'AddOrUpdateRemarks']);
+    Route::delete('/remarks/delete', [TeachersController::class, 'deleteRemarks']);
+
 });
 Route::prefix('JuniorLec')->group(function () {
     Route::get('classestoday/{juniorLecturerId}', [JuniorLecController::class, 'juniorTodayClassesWithStatus']);
@@ -551,6 +555,10 @@ Route::prefix('Students')->group(function () {
 
     //date sheet
     Route::get('/datesheet/{student_id}', [StudentsController::class, 'getStudentDateSheet']);
+    //PREVENT PARENTS 
+    Route::post('/restricted-parent-courses/add', [StudentsController::class, 'addRestriction']);
+    Route::delete('/restricted-parent-courses/delete/{id}', [StudentsController::class, 'deleteRestriction']);
+    Route::get('/parents-restrictions', [StudentsController::class, 'getStudentParentsAndRestrictions']);
 
 });
 Route::prefix('Grader')->group(function () {

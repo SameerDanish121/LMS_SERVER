@@ -797,6 +797,7 @@ class StudentManagement extends Model
                     'teacher_image' => ($teacher && $teacher->image) ? asset($teacher->image) : null,
                     'offered_course_id' => $offeredCourse->id,
                     'teacher_offered_course_id' => ($teacherOfferedCourse) ? $teacherOfferedCourse->id : null,
+                    'remarks'=>($teacherOfferedCourse)?teacher_remarks::getRemarks($teacherOfferedCourse->id,$student_id) :null
                 ];
                 if ($course->lab == 1) {
                     $juniorLecturer = teacher_juniorlecturer::where('teacher_offered_course_id', $teacherOfferedCourse->id)->first();
@@ -872,6 +873,7 @@ class StudentManagement extends Model
                     'teacher_image' => ($teacher && $teacher->image) ? asset($teacher->image) : null,
                     'result Info' => $result,
                     'grade' => $enrolledCourse->grade ?: 'N/A',
+                    'remarks'=>($teacherOfferedCourse)?teacher_remarks::getRemarks($teacherOfferedCourse->id,$student_id) :null
                 ];
                 if ($course->lab == 1) {
                     if ($teacherOfferedCourse) {

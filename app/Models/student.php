@@ -63,4 +63,13 @@ class student extends Model
     {
         return $this->hasMany(student_offered_courses::class, 'student_id');
     }
+    public function teacherRemarks()
+{
+    return $this->hasMany(teacher_remarks::class, 'student_id', 'id');
+}
+public function restrictedCourses()
+{
+    return $this->hasMany(restricted_parent_courses::class, 'student_id');
+}
+
 }

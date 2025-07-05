@@ -60,4 +60,9 @@ class Course extends Model
 
         return $ID ?: null; // Return the ID if found, otherwise null
     }
+    public function restrictedParentCourses()
+    {
+        return $this->hasMany(restricted_parent_courses::class, 'course_id');
+    }
+
 }

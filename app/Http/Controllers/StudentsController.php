@@ -8,7 +8,9 @@ use App\Models\Director;
 use App\Models\exam;
 use App\Models\grader;
 use App\Models\Hod;
+use App\Models\parent_student;
 use App\Models\parents;
+use App\Models\restricted_parent_courses;
 use App\Models\student_exam_result;
 use App\Models\t_coursecontent_topic_status;
 use App\Models\task_consideration;
@@ -57,9 +59,144 @@ use Illuminate\Support\Facades\File;
 use Intervention\Image\ImageManager;
 class StudentsController extends Controller
 {
-    
-    
-    public function getStudentDateSheet($student_id)
+
+
+    public function getStudentParentsAndRestrictions(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'student_id' => 'required|exists:student,id',
+            ]);
+            $student_id = $validated['student_id'];
+            $courses = StudentManagement::getActiveEnrollmentCoursesName($student_id);
+            $parentLinks = parent_student::with('parent')->where('student_id', $student_id)->get();
+            $parents = [];
+            foreach ($parentLinks as $link) {
+                $parent = $link->parent;
+                $restrictions = restricted_parent_courses::where('parent_id', $parent->id)
+                    ->where('student_id', $student_id)
+                    ->get();
+                $courseRestrictions = [];
+                foreach ($courses as $course) {
+                    $course_id = $course['course_id'];
+                    $courseRestricted = $restrictions->where('course_id', $course_id);
+                    $types = ['core', 'attendance', 'task', 'exam'];
+                    $status = [];
+                    foreach ($types as $type) {
+                        $entry = $courseRestricted->firstWhere('restriction_type', $type);
+
+                        $status[$type] = [
+                            'status' => $entry ? 'Not Allowed' : 'Allowed',
+                            'restriction_id' => $entry?->id,
+                        ];
+                       
+                    }
+                    $courseRestrictions[] = [
+                        'course_id' => $course_id,
+                        'course_name' => $course['course_name'],
+                        'restrictions' => $status,
+                    ];
+                }
+                $parents[] = [
+                    'parent_id' => $parent->id,
+                    'name' => $parent->name,
+                    'relation' => $parent->relation_with_student,
+                    'contact' => $parent->contact,
+                    'address' => $parent->address,
+                    'course_restrictions' => $courseRestrictions,
+                ];
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Student parents and restrictions fetched successfully.',
+                'data' => [
+                    'active_courses' => $courses,
+                    'parents' => $parents
+                ]
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error.',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unexpected error occurred.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function addRestriction(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'parent_id' => 'required|exists:parents,id',
+                'student_id' => 'required|exists:student,id',
+                'course_id' => 'required|exists:course,id',
+                'restriction_type' => 'required|string|in:attendance,task,exam,core',
+            ]);
+
+            $result = restricted_parent_courses::insertOne(
+                $request->parent_id,
+                $request->student_id,
+                $request->course_id,
+                $request->restriction_type,
+            );
+
+            if ($result === null) {
+                return response()->json([
+                    'message' => 'Restriction already exists.'
+                ], 409); 
+            }
+
+            return response()->json([
+                'message' => 'Restriction added successfully.',
+                'data' => $result,
+            ], 201);
+
+        } catch (ValidationException $ve) {
+            return response()->json([
+                'message' => 'Validation failed.',
+                'errors' => $ve->errors(),
+            ], 422);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Unexpected error occurred.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+
+    public function deleteRestriction($id)
+    {
+        try {
+            $deleted = restricted_parent_courses::deleteById($id);
+
+            if (!$deleted) {
+                return response()->json([
+                    'message' => 'Record not found or already deleted.'
+                ], 404);
+            }
+
+            return response()->json([
+                'message' => 'Restriction deleted successfully.'
+            ], 200);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Unexpected error occurred.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+     public function getStudentDateSheet($student_id)
     {
         try {
             $currentSessionId = (new session())->getCurrentSessionId();
@@ -86,12 +223,12 @@ class StudentsController extends Controller
 
                     $entry = [
                         'Course Name' => $course['course_name'],
-                        'Course Code' => $sheet->course->code ?? '', 
-                        'Section Name' =>$course['Section'],
+                        'Course Code' => $sheet->course->code ?? '',
+                        'Section Name' => $course['Section'],
                         'Start Time' => $sheet->Start_Time,
                         'End Time' => $sheet->End_Time,
-                        'Day' => $date->format('l'), 
-                        'Date' => $date->format('d-F-Y'), 
+                        'Day' => $date->format('l'),
+                        'Date' => $date->format('d-F-Y'),
                         'Type' => $sheet->Type,
                         'isToday' => $date->isSameDay($today) ? 'Yes' : 'No',
                     ];
@@ -109,7 +246,7 @@ class StudentsController extends Controller
             $response = [
                 'session' => $sessionName,
                 'mid' => $mid,
-                'fianl' => $final,
+                'final' => $final,
             ];
 
             return response()->json($response, 200);
@@ -800,7 +937,7 @@ class StudentsController extends Controller
                     "Username" => $HOD->user->username,
                     "Password" => $HOD->user->password,
                     "user_id" => $HOD->user->id,
-                    "program_id"=>$HOD->program_id,
+                    "program_id" => $HOD->program_id,
                     "Current Session" => (new session())->getSessionNameByID($session->id) ?? 'N/A',
                     "Start Date" => $session->start_date ?? "N/A",
                     "End Date" => $session->end_date ?? "N/A",

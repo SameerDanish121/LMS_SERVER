@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 use App\Models\datacell;
 use App\Models\grader_task;
 use App\Models\task_consideration;
+use App\Models\teacher_remarks;
 use DateTime;
 use Exception;
 use App\Models;
@@ -110,6 +111,7 @@ class JuniorLecController extends Controller
                 'task' => self::getTaskProgressWithConsideration($student->id, $teacher_offered_course_id),
                 'Mid_Exam' => self::getExamProgressSummary($student->id, $teacher_offered_course_id, 'Mid'),
                 'Final_Exam' => self::getExamProgressSummary($student->id, $teacher_offered_course_id, 'Final'),
+                'remarks'=>teacher_remarks::getRemarks($teacher_offered_course_id,$student->id),
             ];
         })->filter();
         return response()->json([

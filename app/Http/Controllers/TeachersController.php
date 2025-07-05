@@ -25,6 +25,7 @@ use App\Models\task_consideration;
 use App\Models\teacher;
 use App\Models\teacher_grader;
 use App\Models\teacher_juniorlecturer;
+use App\Models\teacher_remarks;
 use App\Models\temp_enroll;
 use App\Models\topic;
 use App\Models\venue;
@@ -61,6 +62,50 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 class TeachersController extends Controller
 {
+    public function AddOrUpdateRemarks(Request $request)
+    {
+        try {
+            $request->validate([
+                'teacher_offered_course_id' => 'required',
+                'student_id' => 'required',
+                'remarks' => 'required'
+            ]);
+            $added = teacher_remarks::addRemarks($request->teacher_offered_course_id, $request->student_id, $request->remarks);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Remarks Added Successfully',
+                'data' => $added,
+
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+    public function deleteRemarks(Request $request)
+    {
+        try {
+            $request->validate([
+                'teacher_offered_course_id' => 'required',
+                'student_id' => 'required'
+            ]);
+            teacher_remarks::where('teacher_offered_course_id', $request->teacher_offered_course_id)->where('student_id', $request->student_id)->delete();
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Remarks Deleted Successfully'
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
     public function getConsiderationSummary(Request $request)
     {
         $request->validate([
@@ -1926,7 +1971,7 @@ class TeachersController extends Controller
                                 ->where('status', 'pending')
                                 ->first()
                         ) {
-                             $graderDetails['CanBeRequested'] = 'Requested';
+                            $graderDetails['CanBeRequested'] = 'Requested';
                             $graderDetails['Text'] = 'This Grader is Allocated to a Different Teacher / You ! ';
                         } else {
                             $graderDetails['CanBeRequested'] = 'Yes';
