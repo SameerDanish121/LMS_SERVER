@@ -152,6 +152,9 @@ Route::prefix('Uploading')->group(function () {
     Route::post('/timetable/section', [DatacellModuleController::class, 'getTimetableGroupedBySection']);
     Route::post('/uplaod/SubjectFullResult', [ExtraKhattaController::class, 'AddSubjectResult']);
     Route::post('/uplaod/Exam', [DatacellModuleController::class, 'CreateExam']);
+    //DATE_SHEET
+     Route::post('/uplaod/Date_Sheet', [DatacellModuleController::class, 'addDateSheetExcel']);
+    
 });
 Route::prefix('Insertion')->group(function () {
     Route::post('/add-single-teacher', [SingleInsertionController::class, 'AddSingleTeacher']);
@@ -559,8 +562,12 @@ Route::prefix('Students')->group(function () {
     Route::post('/restricted-parent-courses/add', [StudentsController::class, 'addRestriction']);
     Route::delete('/restricted-parent-courses/delete/{id}', [StudentsController::class, 'deleteRestriction']);
     Route::get('/parents-restrictions', [StudentsController::class, 'getStudentParentsAndRestrictions']);
-
-});
+    //STUDENT SPEDIFIC PARENT DATA
+    Route::get('/Parents/getAllEnrollments', [StudentsController::class, 'GetActiveEnrollmentsForParent']);
+    Route::get('/Parents/attendance', [StudentsController::class, 'getAttendanceParent']);
+    Route::post('/Parents/exam-result', [StudentsController::class, 'getStudentExamResultParent']);
+    Route::get('/Parents/task/evaluated', [StudentsController::class, 'getAllTaskConsideredParent']);
+}); 
 Route::prefix('Grader')->group(function () {
     Route::get('/GraderInfo', [GraderController::class, 'GraderOf']);
     Route::get('/YourTask', [GraderController::class, 'GraderTask']);

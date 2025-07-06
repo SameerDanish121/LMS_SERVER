@@ -89,7 +89,7 @@ class StudentsController extends Controller
                             'status' => $entry ? 'Not Allowed' : 'Allowed',
                             'restriction_id' => $entry?->id,
                         ];
-                       
+
                     }
                     $courseRestrictions[] = [
                         'course_id' => $course_id,
@@ -151,7 +151,7 @@ class StudentsController extends Controller
             if ($result === null) {
                 return response()->json([
                     'message' => 'Restriction already exists.'
-                ], 409); 
+                ], 409);
             }
 
             return response()->json([
@@ -196,7 +196,7 @@ class StudentsController extends Controller
             ], 500);
         }
     }
-     public function getStudentDateSheet($student_id)
+    public function getStudentDateSheet($student_id)
     {
         try {
             $currentSessionId = (new session())->getCurrentSessionId();
@@ -321,6 +321,90 @@ class StudentsController extends Controller
             $AllTask = [];
             foreach ($enrolledCourses as $enrollment) {
 
+                $sectionId = $enrollment['section_id'];
+                $offeredCourseId = $enrollment['offered_course_id'];
+                $teacherOfferedCourse = teacher_offered_courses::where('section_id', $sectionId)
+                    ->where('offered_course_id', $offeredCourseId)
+                    ->first();
+                if ($teacherOfferedCourse) {
+                    $data = [];
+                    $teacherOfferedCourseId = $teacherOfferedCourse->id;
+                    $tasks = task::with(['courseContent', 'teacherOfferedCourse.section', 'teacherOfferedCourse.offeredCourse.course'])->where('teacher_offered_course_id', $teacherOfferedCourseId)->where('isMarked', 1)
+                        ->where('due_date', '<', Carbon::now())->get();
+                    foreach ($tasks as $task) {
+                        $currentDate = now();
+                        $taskDetails = [
+                            'id' => $task->id,
+                            'title' => $task->title,
+                            'type' => $task->type,
+                            'points' => $task->points,
+                            'start_date' => $task->start_date,
+                            'due_date' => $task->due_date,
+                            'created_by' => $task->CreatedBy
+                        ];
+                        if ($task->start_date <= $currentDate && $task->due_date >= $currentDate) {
+                            $studentTaskResult = student_task_result::where('Task_id', $task->id)
+                                ->where('Student_id', $student_id)
+                                ->first();
+                            if ($studentTaskResult && $task->courseContent->content == 'MCQS') {
+                                $taskDetails['obtained_points'] = $studentTaskResult->ObtainedMarks ?? null;
+                                $data[] = $taskDetails;
+                            }
+                        } else {
+                            $studentTaskResult = student_task_result::where('Task_id', $task->id)
+                                ->where('Student_id', $student_id)
+                                ->first();
+                            if ($studentTaskResult) {
+                                $taskDetails['obtained_points'] = $studentTaskResult->ObtainedMarks ?? null;
+                                $data[] = $taskDetails;
+                            }
+                        }
+                    }
+                    usort($data, function ($a, $b) {
+                        return strtotime($b['due_date']) <=> strtotime($a['due_date']);
+                    });
+                    $summary = $enrollment['teacher_offered_course_id'] ? task_consideration::getConsiderationSummary($enrollment['teacher_offered_course_id'], $enrollment['isLab']) : [];
+
+                    $courseBreakDown = [
+                        'teacher_offered_course_id' => $enrollment['teacher_offered_course_id'],
+                        'course_name' => $enrollment['course_name'],
+                        'section' => $enrollment['Section'],
+                        'IsLab' => $enrollment['isLab'],
+                        'Consideration_Summary' => $summary,
+                        'Tasks' => $data,
+                        'Considered' => self::OnlyConsidered($data, $summary),
+                    ];
+                    $AllTask[] = $courseBreakDown;
+                }
+            }
+            return response()->json([
+                'status' => 'success',
+                'data' => $AllTask
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+
+    }
+    public function getAllTaskConsideredParent(Request $request)
+    {
+        try {
+            $student_id = $request->student_id;
+            $parent_id = $request->parent_id;
+            $enrolledCourses = StudentManagement::getActiveEnrollmentCoursesName($student_id);
+            $AllTask = [];
+            $restrictedCourseIds = restricted_parent_courses::where('parent_id', $parent_id)
+                ->where('student_id', $student_id)
+                ->where('restriction_type', 'task')
+                ->pluck('course_id')
+                ->toArray();
+            foreach ($enrolledCourses as $enrollment) {
+                if (in_array($enrollment['course_id'], $restrictedCourseIds)) {
+                    continue;
+                }
                 $sectionId = $enrollment['section_id'];
                 $offeredCourseId = $enrollment['offered_course_id'];
                 $teacherOfferedCourse = teacher_offered_courses::where('section_id', $sectionId)
@@ -652,7 +736,9 @@ class StudentsController extends Controller
         try {
             $request->validate([
                 "student_id" => 'required|string',
+                "parent_id"=>'required'
             ]);
+            $parent_id=$request->parent_id;
             $student = student::where('id', $request->student_id)->with(['program', 'user'])
                 ->first();
             if (!$student) {
@@ -687,10 +773,10 @@ class StudentsController extends Controller
                 "Total Enrollments" => student_offered_courses::GetCountOfTotalEnrollments($student->id),
                 "Current Session" => (new session())->getSessionNameByID((new session())->getCurrentSessionId()) ?: 'N/A',
                 $attribute => excluded_days::checkHoliday() ? [] : $timetable,
-                "Attendance" => (new attendance())->getAttendanceByID($student_id),
+                "Attendance" => (new attendance())->getAttendanceByIDParent($student_id,$parent_id),
                 "Image" => $student->image ? asset($student->image) : null,
                 "Current_Week" => (new session())->getCurrentSessionWeek() ?? 0,
-                "Task_Info" => StudentManagement::getDueSoonUnsubmittedTasks($student_id),
+                "Task_Info" => StudentManagement::getDueSoonUnsubmittedTasksParent($student_id,$parent_id),
             ];
             if ($rescheduled) {
                 $studentInfo['Notice'] = $Notice;
@@ -1756,7 +1842,22 @@ class StudentsController extends Controller
     {
         try {
             $studentId = $request->student_id;
+            $parent_id = $request->parent_id;
             $attendanceData = (new attendance())->getAttendanceByID($studentId);
+            return response()->json([
+                'message' => 'Attendance data fetched successfully',
+                'data' => $attendanceData,
+            ], 200);
+        } catch (Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+    public function getAttendanceParent(Request $request)
+    {
+        try {
+            $studentId = $request->student_id;
+            $parent_id = $request->parent_id;
+            $attendanceData = (new attendance())->getAttendanceByIDParent($studentId, $parent_id);
             return response()->json([
                 'message' => 'Attendance data fetched successfully',
                 'data' => $attendanceData,
@@ -2541,6 +2642,43 @@ class StudentsController extends Controller
             ], 500);
         }
     }
+    public function GetActiveEnrollmentsForParent(Request $request)
+    {
+        try {
+            $request->validate([
+                'student_id' => 'required',
+                'parent_id' => 'required'
+            ]);
+            $id = $request->student_id;
+            $parent_id = $request->parent_id;
+            $currentCourses = StudentManagement::getYourEnrollmentsForParent($id, $parent_id);
+            $previousCourses = StudentManagement::getYourPreviousEnrollments($id);
+            return response()->json([
+                'success' => 'Fetcehd Successfully !',
+                'CurrentCourses' => $currentCourses,
+                'PreviousCourses' => $previousCourses
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 400);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid username or password'
+            ], 404);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An unexpected error occurred',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
     public function GetActiveEnrollments(Request $request)
     {
         try {
@@ -2963,5 +3101,96 @@ class StudentsController extends Controller
             'data' => $Data
         ], 200);
     }
+    public function getStudentExamResultParent(Request $request)
+    {
+        $validated = $request->validate([
+            'student_id' => 'required',
+            'parent_id' => 'required'
+        ]);
+        $studentId = $validated['student_id'];
+        $parentId = $validated['parent_id'];
+        $restrictedCourseIds = restricted_parent_courses::where('parent_id', $parentId)
+            ->where('student_id', $studentId)
+            ->where('restriction_type', 'exam')
+            ->pluck('course_id')
+            ->toArray();
+        $courses = StudentManagement::getAllEnrollmentCoursesName($request->student_id);
+        if (!student::find($validated['student_id'])) {
+            return 'No Student Found  !';
+        }
+        $studentId = $validated['student_id'];
+        $Data = [];
+        foreach ($courses as $course) {
+            if (in_array($course['course_id'], $restrictedCourseIds)) {
+                continue;
+            }
+            $offeredCourseId = $course['offered_course_id'];
+            $exams = exam::where('offered_course_id', $offeredCourseId)->with(['questions'])->get();
+            $results = [];
+            $totalObtainedMarks = 0;
+            $totalMarks = 0;
+            $solidMarks = 0;
+            foreach ($exams as $exam) {
+                $examData = [
+                    'exam_id' => $exam->id,
+                    'exam_type' => $exam->type,
+                    'exam_question_paper' => $exam->QuestionPaper ? asset($exam->QuestionPaper) : null,
+                    'total_marks' => $exam->total_marks,
+                    'solid_marks' => $exam->Solid_marks,
+                    'obtained_marks' => 0,
+                    'solid_marks_equivalent' => 0,
+                    'status' => 'Declared',
+                    'questions' => [],
 
+                ];
+                $examTotalObtained = 0;
+                foreach ($exam->questions as $question) {
+                    $result = student_exam_result::where('question_id', $question->id)
+                        ->where('student_id', $studentId)
+                        ->where('exam_id', $exam->id)
+                        ->first();
+
+                    $questionData = [
+                        'question_id' => $question->id,
+                        'q_no' => $question->q_no,
+                        'marks' => $question->marks,
+                        'obtained_marks' => $result ? $result->obtained_marks : null,
+                    ];
+
+                    $examData['questions'][] = $questionData;
+
+                    if ($result) {
+                        $examTotalObtained += $result->obtained_marks;
+                    }
+                }
+                $examData['obtained_marks'] = $examTotalObtained;
+                $examData['solid_marks_equivalent'] = $exam->Solid_marks > 0
+                    ? ($examTotalObtained / $exam->total_marks) * $exam->Solid_marks
+                    : 0;
+                $totalObtainedMarks += $examTotalObtained;
+                $totalMarks += $exam->total_marks;
+                $solidMarks += $exam->Solid_marks;
+
+                $results[$exam->type][] = $examData;
+            }
+            $Data[] = [
+                'course_name' => $course['course_name'],
+                'session' => $course['Session'],
+                'section' => $course['Section'],
+                'total_marks' => $totalMarks,
+                'solid_marks' => $solidMarks,
+                'obtained_marks' => $totalObtainedMarks,
+                'solid_marks_equivalent' => $solidMarks > 0
+                    ? ($totalObtainedMarks / $totalMarks) * $solidMarks
+                    : 0,
+                'exam_results' => $results,
+            ];
+
+
+        }
+        return response()->json([
+            'status' => 'success',
+            'data' => $Data
+        ], 200);
+    }
 }

@@ -25,6 +25,7 @@ use App\Models\topic;
 use App\Models\venue;
 use Exception;
 use GrahamCampbell\ResultType\Success;
+use Illuminate\Support\Str;
 use Laravel\Pail\Options;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Http\Request;
@@ -54,8 +55,40 @@ class DatacellModuleController extends Controller
 {
     public function addDateSheetExcel(Request $request)
     {
+        function extractFormattedTimes($slotString)
+        {
+            $slotString = str_replace('Time Slot:', '', $slotString);
+            $slotString = trim($slotString);
+
+            [$start, $end] = explode('-', $slotString);
+
+            $start = trim($start);
+            $end = trim($end);
+
+            $startFormatted = formatToTime($start);
+            $endFormatted = formatToTime($end);
+
+            return [$startFormatted, $endFormatted];
+        }
+        function formatToTime($timeStr)
+        {
+            // Parse manually and format without 24-hour conversion
+            $timeStr = strtoupper(trim($timeStr)); // Ensure "PM" or "AM" is uppercase
+
+            // Extract hour and minute
+            preg_match('/(\d{1,2}):(\d{2})\s*(AM|PM)/', $timeStr, $matches);
+
+            if (!$matches) {
+                return '00:00:00'; // fallback
+            }
+
+            $hour = str_pad((int) $matches[1], 2, '0', STR_PAD_LEFT);
+            $minute = $matches[2];
+
+            // Return in HH:MM:SS without converting to 24-hour
+            return "$hour:$minute:00";
+        }
         try {
-            // Step 1: Validate request
             $request->validate([
                 'excel_file' => 'required|file|mimes:xlsx,xls',
                 'type' => 'required|string',
@@ -67,8 +100,206 @@ class DatacellModuleController extends Controller
             date_sheet::where('session_id', $currentSessionId)
                 ->where('Type', $request->type)
                 ->delete();
+            $file = $request->file('excel_file');
+            $spreadsheet = IOFactory::load($file->getPathname());
+            $sheetData = $spreadsheet->getActiveSheet()->toArray(null, true, true, true);
+            $NonEmptyRow = [];
+            foreach ($sheetData as $row) {
+                if (
+                    array_filter($row, function ($value) {
+                        return !is_null($value);
+                    })
+                ) {
+                    $row = array_map('trim', $row);
+                    $NonEmptyRow[] = $row;
+                }
+            }
+            $groups = [];
+            $currentGroup = [];
+            $currentSlot = null;
+            foreach ($NonEmptyRow as $row) {
+                if (isset($row['A']) && Str::startsWith($row['A'], 'Time Slot:')) {
+                    if ($currentSlot && !empty($currentGroup)) {
+                        [$startTime, $endTime] = extractFormattedTimes($currentSlot);
+                        $groups[] = [
+                            'start_time' => $startTime,
+                            'end_time' => $endTime,
+                            'rows' => $currentGroup
+                        ];
+                    }
+                    $currentSlot = trim($row['A']);
+                    $currentGroup = [];
+                } else {
+                    if ($currentSlot !== null) {
+                        $currentGroup[] = $row;
+                    }
+                }
+            }
+            if ($currentSlot && !empty($currentGroup)) {
+                [$startTime, $endTime] = extractFormattedTimes($currentSlot);
+                $groups[] = [
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'rows' => $currentGroup
+                ];
+            }
+            $finalData = [];
+            foreach ($groups as $group) {
+                $startTime = $group['start_time'];
+                $endTime = $group['end_time'];
+                $rows = $group['rows'];
+                if (count($rows) < 2 || !isset($rows[0]['A']) || !isset($rows[0]['B']) || trim($rows[0]['A']) !== 'Day' || trim($rows[0]['B']) !== 'Date') {
+                    continue;
+                }
+                $headerRow = $rows[0];
+                $headerKeys = array_keys($headerRow);
+                $dataCols = array_slice($headerKeys, 2);
+                for ($i = 1; $i < count($rows); $i++) {
+                    $row = $rows[$i];
+                    $day = trim($row['A'] ?? '');
+                    $date = trim($row['B'] ?? '');
+                    $count = 0;
+                    foreach ($dataCols as $col) {
+                        $count++;
+                        $section = trim($headerRow[$col] ?? '');
+                        $course = trim($row[$col] ?? '');
 
-            return response()->json(['message' => 'Old date sheet entries cleared. Ready for new upload.'], 200);
+                        if ($course !== '' && $section !== '') {
+                            $finalData[] = [
+                                'start_time' => $startTime,
+                                'end_time' => $endTime,
+                                'day' => $day,
+                                'date' => $date,
+                                'section' => $section,
+                                'course' => $course,
+                            ];
+                        }
+                    }
+                }
+
+            }
+            $normalizedData = [];
+
+            foreach ($finalData as $item) {
+                $section = $item['section'];
+                $courseParts = explode(':', $item['course'], 2);
+                $courseCode = isset($courseParts[0]) ? trim($courseParts[0]) : null;
+                $courseName = isset($courseParts[1]) ? trim($courseParts[1]) : null;
+                unset($item['course']);
+                $item['course_code'] = $courseCode;
+                $item['course_name'] = $courseName;
+                if (preg_match('/^([A-Z]+-\d+)([A-Z,]+)$/', $section, $matches)) {
+                    $base = $matches[1];
+                    $parts = explode(',', $matches[2]);
+                    foreach ($parts as $suffix) {
+                        $newItem = $item;
+                        $newItem['section'] = $base . $suffix;
+                        $normalizedData[] = $newItem;
+                    }
+                } else {
+                    $normalizedData[] = $item;
+                }
+            }
+            $Success = [];
+            $Error = [];
+            $session_id = $currentSessionId;
+
+            foreach ($normalizedData as $value) {
+                $sectionName = $value['section'];
+                $courseCode = $value['course_code'];
+                $courseName = $value['course_name'];
+                $Day = $value['day'];
+                $Date = $value['date'];
+                $startTime = $value['start_time'];
+                $endTime = $value['end_time'];
+                $startTimeFormatted = date('H:i', strtotime($startTime));
+                $endTimeFormatted = date('H:i', strtotime($endTime));
+                $timeSlot = $startTimeFormatted . '-' . $endTimeFormatted;
+                try {
+                    $sectionModel = new section();
+                    $section_id = $sectionModel->getIDByName($sectionName);
+
+                    if (!$section_id) {
+                        $Error[] = [
+                            "status" => "error",
+                            "reason" => "Section not found",
+                            "Section" => $sectionName,
+                            "Course" => "$courseCode: $courseName",
+                            "Day" => $Day,
+                            "Time" => $timeSlot,
+                            "Raw Data" => $value
+                        ];
+                        continue;
+                    }
+                    $courseRecord = course::where('code', $courseCode)
+                        ->where('name', $courseName)
+                        ->first();
+
+                    if (!$courseRecord) {
+                        $Error[] = [
+                            "status" => "error",
+                            "reason" => "Course not found",
+                            "Section" => $sectionName,
+                            "Course" => "$courseCode: $courseName",
+                            "Day" => $Day,
+                            "Time" => $timeSlot,
+                            "Raw Data" => $value
+                        ];
+                        continue;
+                    }
+                    $course_id = $courseRecord->id;
+                    date_sheet::updateOrCreate(
+                        [
+                            'Day' => $Day,
+                            'Date' => date('Y-m-d', strtotime(str_replace('/', '-', $Date))), // Format to DB friendly
+                            'Start_Time' => $startTime,
+                            'End_Time' => $endTime,
+                            'section_id' => $section_id,
+                            'course_id' => $course_id,
+                            'session_id' => $session_id,
+                            'Type' => $request->type,
+                        ],
+                        [
+                            'Day' => $Day,
+                            'Date' => date('Y-m-d', strtotime(str_replace('/', '-', $Date))),
+                            'Start_Time' => $startTime,
+                            'End_Time' => $endTime,
+                            'Type' => $request->type,
+                            'section_id' => $section_id,
+                            'course_id' => $course_id,
+                            'session_id' => $session_id,
+                        ]
+                    );
+
+                    $Success[] = [
+                        "status" => "success",
+                        "Section" => $sectionName,
+                        "Course" => "$courseCode: $courseName",
+                        "Day" => $Day,
+                        "Time" => $timeSlot,
+                        "Record" => $value
+                    ];
+                } catch (Exception $e) {
+                    $Error[] = [
+                        "status" => "error",
+                        "reason" => "Insertion failed: " . $e->getMessage(),
+                        "Section" => $sectionName,
+                        "Course" => "$courseCode: $courseName",
+                        "Day" => $Day,
+                        "Time" => $timeSlot,
+                        "Raw Data" => $value
+                    ];
+                }
+            }
+            $successCount = count($Success);
+            $errorCount = count($Error);
+            return response()->json([
+                "success_count" => $successCount,
+                "error_count" => $errorCount,
+                "Success" => $Success,
+                "Error" => $Error,
+            ], 200);
+
         } catch (ValidationException $e) {
             return response()->json([
                 'status' => 'error',
@@ -2100,6 +2331,7 @@ class DatacellModuleController extends Controller
             ], 500);
         }
     }
+
     public function UploadTimetableExcel(Request $request)
     {
         try {
